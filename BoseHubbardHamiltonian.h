@@ -4,14 +4,15 @@
 #include <mpo.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/tokenizer.hpp>
-#include "BoseHubbardModel.h"
+#include "BoseHubbardSiteSet.h"
 
+using namespace itensor;
 
 class BoseHubbardHamiltonian
 {
 public:
 
-    BoseHubbardHamiltonian(const BoseHubbardModel& model,
+    BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
                            const OptSet& opts = Global::opts());
 
     std::vector<Real>
@@ -66,7 +67,7 @@ public:
 
     operator IQMPO() {
         init_();
-        return H;
+        return H.toIQMPO();
     }
 
 private:
@@ -75,8 +76,7 @@ private:
     //
     // Data Members
 
-    const BoseHubbardModel& model_;
-    //Real t_,U_,mu_;
+    const BoseHubbardSiteSet& model_;
     std::vector<Real> t_,U_,mu_;
     bool initted_;
     MPO H;
@@ -98,7 +98,7 @@ private:
 }; //class BoseHubbardChain
 
 inline BoseHubbardHamiltonian::
-BoseHubbardHamiltonian(const BoseHubbardModel& model,
+BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
                        const OptSet& opts)
     :
     model_(model),

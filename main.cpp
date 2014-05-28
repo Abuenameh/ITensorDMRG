@@ -1,20 +1,26 @@
 #include <iostream>
-#include <boost/format.hpp>
+#include <fstream>
 #include <core.h>
+#include <hambuilder.h>
 
-#include "BoseHubbardModel.h"
+#include "BoseHubbardSiteSet.h"
 #include "BoseHubbardHamiltonian.h"
+//#include "BoseHubbardObserver.h"
 
 using std::cout;
 using std::cerr;
 using std::endl;
 using std::string;
-using boost::format;
+using std::vector;
+using std::ofstream;
+//using boost::format;
+
+using namespace itensor;
 
 int main(int argc, char **argv)
 {
-    /*if(argc != 2) {
-        cerr << "Missing parameter file name" << endl;
+    if(argc != 3) {
+        cerr << "Missing parameter or output file name" << endl;
         return 1;
     }
     
@@ -25,14 +31,18 @@ int main(int argc, char **argv)
     const int L = parms.getInt("L");
     const int nmax = parms.getInt("nmax");
     const int nsweeps = parms.getInt("nsweeps");
-    const int N = parms.getInt("N");*/
+    const int N = parms.getInt("N");
+    const bool quiet = parms.getYesNo("quiet",true);    
     
-    int L = 12;
+    InputGroup table(parms,"sweeps");
+    Sweeps sweeps(nsweeps,table);
+    
+    /*int L = 12;
     int nmax = 7;
     int nsweeps = 4;
-    int N = 4;
+    int N = 4;*/
     
-    BoseHubbardModel model(L, nmax);
+    BoseHubbardSiteSet model(L, nmax);
     IQMPO H = BoseHubbardHamiltonian(model);
 
     InitState initState(model);
@@ -47,12 +57,15 @@ int main(int argc, char **argv)
     std::vector<Index> links(L+1);
     for(int l = 0; l <= L; ++l) links.at(l) = Index(nameint("hl",l),4);
 
-    std::vector<std::vector<IQMPO> > C;
+    vector<vector<IQMPO> > COp;
 
     for(int i = 1; i <= L; ++i) {
         std::vector<IQMPO> Ci;
         for(int j = 1; j <= L; ++j) {
+            HamBuilder<ITensor> ham(model);
+            //ham.set(model.op("Bdag",i),i,model.op("B",j),j);
             MPO Cij(model);
+            //Cij=ham;
             for(int n = 1; n <= L; ++n) {
                 ITensor& W = Cij.Anc(n);
                 Index &row = links[n-1], &col = links[n];
@@ -70,68 +83,76 @@ int main(int argc, char **argv)
             }
             Cij.Anc(1) *= ITensor(links.at(0)(1));
             Cij.Anc(L) *= ITensor(links.at(L)(4));
-            Ci.push_back(Cij);
+            Ci.push_back(Cij.toIQMPO());
         }
-        C.push_back(Ci);
+        COp.push_back(Ci);
     }
 
-    std::cout << boost::format("Initial energy = %.5f") % psiHphi(psi,H,psi) << std::endl;
+    std::cout << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << std::endl;
 
-    Sweeps sweeps(10);
-    //sweeps.maxm() = 10,20,100,100,200;
+    /*Sweeps sweeps(10);
+    sweeps.maxm() = 10,20,100,100,200;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 2;
-    sweeps.noise() = 1E-6,1E-7,0.0;
+    sweeps.noise() = 1E-6,1E-7,0.0;*/
     std::cout << sweeps;
     
-    {
-    SweepSetter<int> ss = sweeps.maxm();
-    SweepSetter<int>& css = ss.operator,(10);
-    css.operator,(20);
-    css.operator,(100);
-    css.operator,(100);
-    css.operator,(200);
-//    css = css.operator,(20);
-//    css = css.operator,(100);
-//    css = css.operator,(100);
-//    css = css.operator,(200);
-//    css = css, 100;
-//    css = css, 100;
-//    css = css, 200;
-    
-    }
-    std::cout << sweeps;
+    Real E0 = dmrg(psi,H,sweeps,Opt("Quiet",quiet));
 
-    Real En = dmrg(psi,H,sweeps,Quiet());
-
-    std::cout << boost::format("\nGround State Energy = %.10f")%En << std::endl;
+    std::cout << format("\nGround State Energy = %.10f",E0) << std::endl;
 
     Real Ntot = 0;
 
-    Vector nd(L), n2d(L);
+    Vector n(L), n2(L);
+    Matrix C(L, L);
     for(int j = 1; j <= L; ++j) {
         psi.position(j);
-        nd(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N",j)*psi.A(j));
-        n2d(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N2",j)*psi.A(j));
-        Ntot += nd(j);
+        n(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N",j)*psi.A(j));
+        n2(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N2",j)*psi.A(j));
+        Ntot += n(j);
+        for(int k = 1; k <= L; ++k) {
+            C(j, k) = psiHphi(psi,COp[j-1][k-1],psi);
+        }
     }
+    
+    string outputfilename(argv[2]);
+    ofstream outputfile(outputfilename);
+    
+    outputfile << "E0 " << format("%.10e", E0) << endl;
+    outputfile << "n ";
+    for(int j = 1; j <= L; ++j) {
+        outputfile << format("%.10e ", n(j));
+    }
+    outputfile << endl;
+    outputfile << "n2 ";
+    for(int j = 1; j <= L; ++j) {
+        outputfile << format("%.10e ", n2(j));
+    }
+    outputfile << endl;
+    outputfile << "C ";
+    for(int j = 1; j <= L; ++j) {
+        for(int k = 1; k <= L; ++k) {
+            outputfile << format("%.10e ", C(j,k));
+        }
+    }
+    outputfile << endl;
 
     cout << "Density:" << endl;
     for(int j = 1; j <= L; ++j)
-        cout << format("%d %.10f\n") % j % nd(j);
+        cout << format("%d %.10f\n", j, n(j));
     cout << endl;
 
     cout << "Density^2:" << endl;
     for(int j = 1; j <= L; ++j)
-        cout << format("%d %.10f\n") % j % n2d(j);
+        cout << format("%d %.10f\n", j, n2(j));
     cout << endl;
 
-    cout << endl << format("Ntot = %.10f\n") % Ntot << endl;
+    cout << endl << format("Ntot = %.10f\n", Ntot) << endl;
 
     cout << "Correlation:" << endl;
     for(int j = 1; j <= L; ++j) {
         for(int k = 1; k <= L; ++k)
-            cout << format("%.10f ") % psiHphi(psi,C[j-1][k-1],psi);
+            cout << format("%.10f ", C(j,k));
         cout << endl;
     }
 
