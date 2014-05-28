@@ -13,7 +13,7 @@ using boost::format;
 
 int main(int argc, char **argv)
 {
-    if(argc != 2) {
+    /*if(argc != 2) {
         cerr << "Missing parameter file name" << endl;
         return 1;
     }
@@ -25,7 +25,12 @@ int main(int argc, char **argv)
     const int L = parms.getInt("L");
     const int nmax = parms.getInt("nmax");
     const int nsweeps = parms.getInt("nsweeps");
-    const int N = parms.getInt("N");
+    const int N = parms.getInt("N");*/
+    
+    int L = 12;
+    int nmax = 7;
+    int nsweeps = 4;
+    int N = 4;
     
     BoseHubbardModel model(L, nmax);
     IQMPO H = BoseHubbardHamiltonian(model);
@@ -73,10 +78,28 @@ int main(int argc, char **argv)
     std::cout << boost::format("Initial energy = %.5f") % psiHphi(psi,H,psi) << std::endl;
 
     Sweeps sweeps(10);
-    sweeps.maxm() = 10,20,100,100,200;
+    //sweeps.maxm() = 10,20,100,100,200;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 2;
     sweeps.noise() = 1E-6,1E-7,0.0;
+    std::cout << sweeps;
+    
+    {
+    SweepSetter<int> ss = sweeps.maxm();
+    SweepSetter<int>& css = ss.operator,(10);
+    css.operator,(20);
+    css.operator,(100);
+    css.operator,(100);
+    css.operator,(200);
+//    css = css.operator,(20);
+//    css = css.operator,(100);
+//    css = css.operator,(100);
+//    css = css.operator,(200);
+//    css = css, 100;
+//    css = css, 100;
+//    css = css, 200;
+    
+    }
     std::cout << sweeps;
 
     Real En = dmrg(psi,H,sweeps,Quiet());
