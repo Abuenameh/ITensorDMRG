@@ -2,8 +2,11 @@
 #define BOSE_HUBBARD_HAMILTONIAN_H
 
 #include <mpo.h>
+#include <hambuilder.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/tokenizer.hpp>
+
+
 #include "BoseHubbardSiteSet.h"
 
 using namespace itensor;
@@ -62,12 +65,12 @@ public:
 
     operator MPO() {
         init_();
-        return H;
+        return H.toMPO();
     }
 
     operator IQMPO() {
         init_();
-        return H.toIQMPO();
+        return H;//.toIQMPO();
     }
 
 private:
@@ -79,7 +82,7 @@ private:
     const BoseHubbardSiteSet& model_;
     std::vector<Real> t_,U_,mu_;
     bool initted_;
-    MPO H;
+    IQMPO H;
 
     //
     //////////////////
@@ -89,12 +92,15 @@ private:
 
     bool
     isReal(std::string s) {
-        try         { boost::lexical_cast<Real>(s);} 
-    catch (...) { return false; }
+        try         {
+            boost::lexical_cast<Real>(s);
+        } catch (...) {
+            return false;
+        }
 
-    return true; 
+        return true;
     }
-    
+
 }; //class BoseHubbardChain
 
 inline BoseHubbardHamiltonian::
@@ -105,16 +111,15 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
     initted_(false)
 {
     const int Ns = model_.N();
-    
+
     std::string tstr = opts.getString("t","0.01");
     std::string Ustr = opts.getString("U","1");
     //std::string mustr = opts.getString("mu","0");
     std::string mustr = opts.getString("mu","0.0244067519637,0.107594683186,0.0513816880358,0.0224415914984,-0.0381726003305,0.0729470565333,-0.0312063943687,0.195886500391,0.231831380251,-0.0582792405871,0.145862519041,0.0144474598765");
-    
+
     if(isReal(tstr)) {
         t_.assign(Ns, boost::lexical_cast<Real>(tstr));
-    }
-    else {
+    } else {
         boost::tokenizer<boost::escaped_list_separator<char> > tok(tstr);
         for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
             t_.push_back(boost::lexical_cast<Real>(*iter));
@@ -122,8 +127,7 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
     }
     if(isReal(Ustr)) {
         U_.assign(Ns, boost::lexical_cast<Real>(Ustr));
-    }
-    else {
+    } else {
         boost::tokenizer<boost::escaped_list_separator<char> > tok(Ustr);
         for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
             U_.push_back(boost::lexical_cast<Real>(*iter));
@@ -131,8 +135,7 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
     }
     if(isReal(mustr)) {
         mu_.assign(Ns, boost::lexical_cast<Real>(mustr));
-    }
-    else {
+    } else {
         boost::tokenizer<boost::escaped_list_separator<char> > tok(mustr);
         for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
             mu_.push_back(boost::lexical_cast<Real>(*iter));
@@ -145,39 +148,23 @@ init_()
 {
     if(initted_) return;
 
-    H = MPO(model_);
-
     const int Ns = model_.N();
-    const int k = 4;
 
-    std::vector<Index> links(Ns+1);
-    for(int l = 0; l <= Ns; ++l) links.at(l) = Index(nameint("hl",l),k);
+    H = IQMPO(model_);
 
-    ITensor W;
     for(int n = 1; n <= Ns; ++n) {
-        ITensor& W = H.Anc(n);
-        Index &row = links[n-1], &col = links[n];
-
-        W = ITensor(model_.si(n),model_.siP(n),row,col);
-
-        //Identity strings
-        W += model_.op("Id",n) * row(1) * col(1);
-        W += model_.op("Id",n) * row(k) * col(k);
-
-        //Hopping terms -t*(b^d_i b_{i+1} + b_i b^d_{i+1})
-        W += model_.op("Bdag",n) * row(1) * col(2) * (-t_[n-1]);
-        W += model_.op("B",n) * row(1) * col(3) * (-t_[n-1]);
-        W += model_.op("B",n) * row(2) * col(k);
-        W += model_.op("Bdag",n) * row(3) * col(k);
-
-        //on-site terms U/2 * n_i(n_i-1) + mu * n_i
-        W += model_.op("N",n) * row(1) * col(k) * (-mu_[n-1]);
-        W += model_.op("OS",n) * row(1) * col(k) * (0.5*U_[n-1]);//OS = N(N-1)
+        HamBuilder<IQTensor> muH(model_, model_.op("N",n), n);
+        H.plusEq(-mu_[n-1] * muH);
+        HamBuilder<IQTensor> UH(model_, model_.op("OS",n), n);
+        H.plusEq(0.5*U_[n-1] * UH);
+        if(n < Ns) {
+            HamBuilder<IQTensor> tH1(model_, model_.op("Bdag",n), n, model_.op("B",n+1), n+1);
+            HamBuilder<IQTensor> tH2(model_, model_.op("B",n), n, model_.op("Bdag",n+1), n+1);
+            H.plusEq(-t_[n-1] * tH1);
+            H.plusEq(-t_[n-1] * tH2);
+        }
     }
 
-    H.Anc(1) *= ITensor(links.at(0)(1));
-    H.Anc(Ns) *= ITensor(links.at(Ns)(k));
-    
     initted_ = true;
 }
 

@@ -62,28 +62,9 @@ int main(int argc, char **argv)
     for(int i = 1; i <= L; ++i) {
         std::vector<IQMPO> Ci;
         for(int j = 1; j <= L; ++j) {
-            HamBuilder<ITensor> ham(model);
-            //ham.set(model.op("Bdag",i),i,model.op("B",j),j);
-            MPO Cij(model);
-            //Cij=ham;
-            for(int n = 1; n <= L; ++n) {
-                ITensor& W = Cij.Anc(n);
-                Index &row = links[n-1], &col = links[n];
-
-                W = ITensor(model.si(n),model.siP(n),row,col);
-
-                if(i != j && (n == i || n == j)) {
-                    W += model.op("Bdag",n) * row(1) * col(2);
-                    W += model.op("B",n) * row(2) * col(4);
-                } else {
-                    for(int k = 1; k <= 4; ++k) {
-                        W += model.op("Id",n) * row(k) * col(k);
-                    }
-                }
-            }
-            Cij.Anc(1) *= ITensor(links.at(0)(1));
-            Cij.Anc(L) *= ITensor(links.at(L)(4));
-            Ci.push_back(Cij.toIQMPO());
+            HamBuilder<IQTensor> bdb(model);
+            bdb.set(model.op("Bdag",i),i,model.op("B",j),j);
+            Ci.push_back(bdb);
         }
         COp.push_back(Ci);
     }
