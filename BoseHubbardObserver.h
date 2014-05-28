@@ -5,21 +5,27 @@
 
 using namespace itensor;
 
-class BoseHubbardObserver : public DMRGObserver
+template<class Tensor>
+class BoseHubbardObserver : public DMRGObserver<Tensor>
 {
 public:
-    BoseHubbardObserver(const OptSet& opts = Global::opts()): DMRGObserver(opts) {}
+    BoseHubbardObserver(const MPSt<Tensor>& psi, const OptSet& opts = Global::opts()): DMRGObserver<Tensor>(psi, opts) {}
 
     void virtual
-    measure(int N, int sw, int ha, int b, const Spectrum& spec, Real energy,
-            const OptSet& opts = Global::opts());
+    measure(const OptSet& opts = Global::opts());
+    
+    std::vector<Real>& getEnergies() { return energies_; }
+    
+private:
+    std::vector<Real> energies_;
 };
 
-void inline BoseHubbardObserver::
-measure(int N, int sw, int ha, int b, const Spectrum& spec, Real energy,
-        const OptSet& opts)
+template<class Tensor>
+void inline BoseHubbardObserver<Tensor>::
+measure(const OptSet& opts)
 {
-    std::cout << "observed" << std::endl;
+    const Real energy = opts.getReal("Energy",0);
+    energies_.push_back(energy);
 }
 
 #endif

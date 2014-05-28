@@ -1,10 +1,11 @@
 #ifndef BOSE_HUBBARD_HAMILTONIAN_H
 #define BOSE_HUBBARD_HAMILTONIAN_H
 
+#include <sstream>
 #include <mpo.h>
 #include <hambuilder.h>
-#include <boost/lexical_cast.hpp>
-#include <boost/tokenizer.hpp>
+//#include <boost/lexical_cast.hpp>
+//#include <boost/tokenizer.hpp>
 
 
 #include "BoseHubbardSiteSet.h"
@@ -80,8 +81,8 @@ private:
     // Data Members
 
     const BoseHubbardSiteSet& model_;
-    std::vector<Real> t_,U_,mu_;
     bool initted_;
+    std::vector<Real> t_,U_,mu_;
     IQMPO H;
 
     //
@@ -90,25 +91,40 @@ private:
     void
     init_();
 
-    bool
-    isReal(std::string s) {
-        try         {
-            boost::lexical_cast<Real>(s);
-        } catch (...) {
-            return false;
-        }
+}; //class BoseHubbardHamiltonian
 
-        return true;
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems)
+{
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(item);
     }
+    return elems;
+}
 
-}; //class BoseHubbardChain
+
+std::vector<std::string> split(const std::string &s, char delim)
+{
+    std::vector<std::string> elems;
+    split(s, delim, elems);
+    return elems;
+}
+
+double stringtodouble(std::string& s)
+{
+    return std::stod(s);
+}
 
 inline BoseHubbardHamiltonian::
 BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
                        const OptSet& opts)
     :
     model_(model),
-    initted_(false)
+    initted_(false),
+    t_(model.N()),
+    U_(model.N()),
+    mu_(model.N())
 {
     const int Ns = model_.N();
 
@@ -117,30 +133,18 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
     //std::string mustr = opts.getString("mu","0");
     std::string mustr = opts.getString("mu","0.0244067519637,0.107594683186,0.0513816880358,0.0224415914984,-0.0381726003305,0.0729470565333,-0.0312063943687,0.195886500391,0.231831380251,-0.0582792405871,0.145862519041,0.0144474598765");
 
-    if(isReal(tstr)) {
-        t_.assign(Ns, boost::lexical_cast<Real>(tstr));
-    } else {
-        boost::tokenizer<boost::escaped_list_separator<char> > tok(tstr);
-        for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
-            t_.push_back(boost::lexical_cast<Real>(*iter));
-        }
-    }
-    if(isReal(Ustr)) {
-        U_.assign(Ns, boost::lexical_cast<Real>(Ustr));
-    } else {
-        boost::tokenizer<boost::escaped_list_separator<char> > tok(Ustr);
-        for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
-            U_.push_back(boost::lexical_cast<Real>(*iter));
-        }
-    }
-    if(isReal(mustr)) {
-        mu_.assign(Ns, boost::lexical_cast<Real>(mustr));
-    } else {
-        boost::tokenizer<boost::escaped_list_separator<char> > tok(mustr);
-        for(boost::tokenizer<boost::escaped_list_separator<char> >::iterator iter = tok.begin(); iter != tok.end(); ++iter) {
-            mu_.push_back(boost::lexical_cast<Real>(*iter));
-        }
-    }
+    std::vector<std::string> tstrs = split(tstr, ',');
+    std::vector<std::string> Ustrs = split(Ustr, ',');
+    std::vector<std::string> mustrs = split(mustr, ',');
+
+    tstrs.resize(Ns, tstrs.back());
+    Ustrs.resize(Ns, Ustrs.back());
+    mustrs.resize(Ns, mustrs.back());
+
+    std::transform(tstrs.begin(), tstrs.end(), t_.begin(), stringtodouble);
+    std::transform(Ustrs.begin(), Ustrs.end(), U_.begin(), stringtodouble);
+    std::transform(mustrs.begin(), mustrs.end(), mu_.begin(), stringtodouble);
+
 }
 
 void inline BoseHubbardHamiltonian::

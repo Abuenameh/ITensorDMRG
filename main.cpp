@@ -5,7 +5,7 @@
 
 #include "BoseHubbardSiteSet.h"
 #include "BoseHubbardHamiltonian.h"
-//#include "BoseHubbardObserver.h"
+#include "BoseHubbardObserver.h"
 
 using std::cout;
 using std::cerr;
@@ -13,7 +13,6 @@ using std::endl;
 using std::string;
 using std::vector;
 using std::ofstream;
-//using boost::format;
 
 using namespace itensor;
 
@@ -78,9 +77,13 @@ int main(int argc, char **argv)
     sweeps.noise() = 1E-6,1E-7,0.0;*/
     std::cout << sweeps;
     
-    Real E0 = dmrg(psi,H,sweeps,Opt("Quiet",quiet));
+    BoseHubbardObserver<IQTensor> observer(psi);
+    
+    Real E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
 
     std::cout << format("\nGround State Energy = %.10f",E0) << std::endl;
+    
+    std::vector<Real> Ei = observer.getEnergies();
 
     Real Ntot = 0;
 
@@ -99,6 +102,11 @@ int main(int argc, char **argv)
     string outputfilename(argv[2]);
     ofstream outputfile(outputfilename);
     
+    outputfile << "Ei ";
+    for(int j = 0; j < Ei.size(); ++j) {
+        outputfile << format("%.10e ", Ei[j]);
+    }
+    outputfile << endl;
     outputfile << "E0 " << format("%.10e", E0) << endl;
     outputfile << "n ";
     for(int j = 1; j <= L; ++j) {
