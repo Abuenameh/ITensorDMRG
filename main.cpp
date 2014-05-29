@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <chrono>
 #include <core.h>
 #include <hambuilder.h>
 
@@ -13,6 +14,10 @@ using std::endl;
 using std::string;
 using std::vector;
 using std::ofstream;
+using std::ifstream;
+using std::chrono::time_point;
+using std::chrono::duration;
+using std::chrono::system_clock;
 
 using namespace itensor;
 
@@ -22,6 +27,8 @@ int main(int argc, char **argv)
         cerr << "Missing parameter or output file name" << endl;
         return 1;
     }
+	
+	time_point<system_clock> start = system_clock::now();
     
     string parmfilename(argv[1]);
     InputFile parmfile(parmfilename);
@@ -45,11 +52,12 @@ int main(int argc, char **argv)
     IQMPO H = BoseHubbardHamiltonian(sites, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
 
     InitState initState(sites);
+	int n0 = N / L;
     for(int i = 1; i <= L; ++i) {
-        if(i <= N)
-            initState.set(i,"1");
+        if(i <= N % L)
+            initState.set(i,std::to_string(n0+1));
         else
-            initState.set(i,"0");
+            initState.set(i,std::to_string(n0));
     }
     IQMPS psi(initState);
 
@@ -143,6 +151,10 @@ int main(int argc, char **argv)
     }
     outputfile << endl;
 
+	time_point<system_clock> end = system_clock::now();
+	duration<double> runtime = end - start;
+	outputfile << "runtime " << runtime.count() << endl;
+    
     /*cout << "Density:" << endl;
     for(int j = 1; j <= L; ++j)
         cout << format("%d %.10f\n", j, n(j));
@@ -153,14 +165,14 @@ int main(int argc, char **argv)
         cout << format("%d %.10f\n", j, n2(j));
     cout << endl;
 
-    cout << endl << format("Ntot = %.10f\n", Ntot) << endl;*/
+    cout << endl << format("Ntot = %.10f\n", Ntot) << endl;
 
     cout << "Correlation:" << endl;
     for(int j = 1; j <= L; ++j) {
         for(int k = 1; k <= L; ++k)
             cout << format("%.10f ", C(j,k));
         cout << endl;
-    }
+    }*/
 
     return 0;
 }
