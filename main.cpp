@@ -39,17 +39,12 @@ int main(int argc, char **argv)
     
     string t = parms.getString("t", "0.01");
     string U = parms.getString("U", "1");
-    string mu = parms.getString("mu", "0.0244067519637,0.107594683186,0.0513816880358,0.0224415914984,-0.0381726003305,0.0729470565333,-0.0312063943687,0.195886500391,0.231831380251,-0.0582792405871,0.145862519041,0.0144474598765");
+    string mu = parms.getString("mu", "0");
     
-    /*int L = 12;
-    int nmax = 7;
-    int nsweeps = 4;
-    int N = 4;*/
-    
-    BoseHubbardSiteSet model(L, nmax);
-    IQMPO H = BoseHubbardHamiltonian(model, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
+    BoseHubbardSiteSet sites(L, nmax);
+    IQMPO H = BoseHubbardHamiltonian(sites, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
 
-    InitState initState(model);
+    InitState initState(sites);
     for(int i = 1; i <= L; ++i) {
         if(i <= N)
             initState.set(i,"1");
@@ -57,9 +52,6 @@ int main(int argc, char **argv)
             initState.set(i,"0");
     }
     IQMPS psi(initState);
-
-    //std::vector<Index> links(L+1);
-    //for(int l = 0; l <= L; ++l) links.at(l) = Index(nameint("hl",l),4);
 
     std::vector<IQIndex> links(L+1);
     for(int l = 0; l <= L; ++l) {
@@ -75,19 +67,19 @@ int main(int argc, char **argv)
     for(int i = 1; i <= L; ++i) {
         std::vector<IQMPO> Ci;
 		for(int j = 1; j <= L; ++j) {
-            IQMPO Cij(model);
+            IQMPO Cij(sites);
             for(int n = 1; n <= L; ++n) {
                 IQTensor& W = Cij.Anc(n);
                 IQIndex row = dag(links[n-1]), col = links[n];
 
-                W = IQTensor(dag(model.si(n)),model.siP(n),row,col);
+                W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
 
                 if(i != j && (n == i || n == j)) {
-                    W += model.op("Bdag",n) * row(1) * col(2);
-                    W += model.op("B",n) * row(2) * col(4);
+                    W += sites.op("Bdag",n) * row(1) * col(2);
+                    W += sites.op("B",n) * row(2) * col(4);
                 } else {
                     for(int k = 1; k <= 4; ++k) {
-                        W += model.op("Id",n) * row(k) * col(k);
+                        W += sites.op("Id",n) * row(k) * col(k);
                     }
                 }
             }
@@ -116,8 +108,8 @@ int main(int argc, char **argv)
     Matrix C(L, L);
     for(int j = 1; j <= L; ++j) {
         psi.position(j);
-        n(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N",j)*psi.A(j));
-        n2(j) = Dot(conj(primed(psi.A(j),Site)),model.op("N2",j)*psi.A(j));
+        n(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N",j)*psi.A(j));
+        n2(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N2",j)*psi.A(j));
         Ntot += n(j);
         for(int k = 1; k <= L; ++k) {
             C(j, k) = psiHphi(psi,COp[j-1][k-1],psi);
@@ -151,7 +143,7 @@ int main(int argc, char **argv)
     }
     outputfile << endl;
 
-    cout << "Density:" << endl;
+    /*cout << "Density:" << endl;
     for(int j = 1; j <= L; ++j)
         cout << format("%d %.10f\n", j, n(j));
     cout << endl;
@@ -161,7 +153,7 @@ int main(int argc, char **argv)
         cout << format("%d %.10f\n", j, n2(j));
     cout << endl;
 
-    cout << endl << format("Ntot = %.10f\n", Ntot) << endl;
+    cout << endl << format("Ntot = %.10f\n", Ntot) << endl;*/
 
     cout << "Correlation:" << endl;
     for(int j = 1; j <= L; ++j) {

@@ -13,7 +13,7 @@ class BoseHubbardHamiltonian
 {
 public:
 
-    BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
+    BoseHubbardHamiltonian(const BoseHubbardSiteSet& sites,
                            const OptSet& opts = Global::opts());
 
     std::vector<Real>
@@ -23,7 +23,7 @@ public:
     void
     t(Real val) {
         initted_ = false;
-        t_.assign(model_.N(),val);
+        t_.assign(sites_.N(),val);
     }
     void
     t(std::vector<Real> val) {
@@ -38,7 +38,7 @@ public:
     void
     U(Real val) {
         initted_ = false;
-        U_.assign(model_.N(),val);
+        U_.assign(sites_.N(),val);
     }
     void
     U(std::vector<Real> val) {
@@ -53,7 +53,7 @@ public:
     void
     mu(Real val) {
         initted_ = false;
-        mu_.assign(model_.N(),val);
+        mu_.assign(sites_.N(),val);
     }
     void
     mu(std::vector<Real> val) {
@@ -68,7 +68,7 @@ public:
 
     operator IQMPO() {
         init_();
-        return H;//.toIQMPO();
+        return H;
     }
 
 private:
@@ -77,7 +77,7 @@ private:
     //
     // Data Members
 
-    const BoseHubbardSiteSet& model_;
+    const BoseHubbardSiteSet& sites_;
     bool initted_;
     std::vector<Real> t_,U_,mu_;
     IQMPO H;
@@ -114,16 +114,16 @@ double stringtodouble(std::string& s)
 }
 
 inline BoseHubbardHamiltonian::
-BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
+BoseHubbardHamiltonian(const BoseHubbardSiteSet& sites,
                        const OptSet& opts)
     :
-    model_(model),
+    sites_(sites),
     initted_(false),
-    t_(model.N()),
-    U_(model.N()),
-    mu_(model.N())
+    t_(sites.N()),
+    U_(sites.N()),
+    mu_(sites.N())
 {
-    const int Ns = model_.N();
+    const int Ns = sites_.N();
 
     std::string tstr = opts.getString("t");
     std::vector<std::string> tstrs = split(tstr, ',');
@@ -147,33 +147,11 @@ init_()
 {
     if(initted_) return;
 
-    /*const int Ns = model_.N();
+    H = IQMPO(sites_);
 
-    H = IQMPO(model_);
-
-    for(int n = 1; n <= Ns; ++n) {
-        //HamBuilder<IQTensor> muH(model_, model_.op("N",n), n);
-		HamBuilder<IQTensor> muH(model_);
-		IQMPO qwe = -mu_[n-1]*muH;
-		H.plusEq(qwe);
-        /*if(mu_[n-1] != 0) {
-            H.plusEq(-mu_[n-1] * muH);
-        }*/
-        /*HamBuilder<IQTensor> UH(model_, model_.op("OS",n), n);
-        H.plusEq(0.5*U_[n-1] * UH);
-        if(n < Ns) {
-            HamBuilder<IQTensor> tH1(model_, model_.op("Bdag",n), n, model_.op("B",n+1), n+1);
-            HamBuilder<IQTensor> tH2(model_, model_.op("B",n), n, model_.op("Bdag",n+1), n+1);
-            H.plusEq(-t_[n-1] * tH1);
-            H.plusEq(-t_[n-1] * tH2);
-        }*/
-    //}
-
-    H = IQMPO(model_);
-
-    const int Ns = model_.N();
+    const int Ns = sites_.N();
     const int k = 4;
-	const int nmax = model_.nmax();
+	const int nmax = sites_.nmax();
 
     std::vector<IQIndex> links(Ns+1);
     for(int l = 0; l <= Ns; ++l) {
@@ -188,21 +166,21 @@ init_()
         IQTensor& W = H.Anc(n);
         IQIndex row = dag(links[n-1]), col = links[n];
 
-        W = IQTensor(dag(model_.si(n)),model_.siP(n),row,col);
+        W = IQTensor(dag(sites_.si(n)),sites_.siP(n),row,col);
 
         //Identity strings
-        W += model_.op("Id",n) * row(1) * col(1);
-        W += model_.op("Id",n) * row(k) * col(k);
+        W += sites_.op("Id",n) * row(1) * col(1);
+        W += sites_.op("Id",n) * row(k) * col(k);
 
         //Hopping terms -t*(b^d_i b_{i+1} + b_i b^d_{i+1})
-        W += model_.op("Bdag",n) * row(1) * col(2) * (-t_[n-1]);
-        W += model_.op("B",n) * row(1) * col(3) * (-t_[n-1]);
-        W += model_.op("B",n) * row(2) * col(k);
-        W += model_.op("Bdag",n) * row(3) * col(k);
+        W += sites_.op("Bdag",n) * row(1) * col(2) * (-t_[n-1]);
+        W += sites_.op("B",n) * row(1) * col(3) * (-t_[n-1]);
+        W += sites_.op("B",n) * row(2) * col(k);
+        W += sites_.op("Bdag",n) * row(3) * col(k);
 
         //on-site terms U/2 * n_i(n_i-1) + mu * n_i
-        W += model_.op("N",n) * row(1) * col(k) * (-mu_[n-1]);
-        W += model_.op("OS",n) * row(1) * col(k) * (0.5*U_[n-1]);//OS = N(N-1)
+        W += sites_.op("N",n) * row(1) * col(k) * (-mu_[n-1]);
+        W += sites_.op("OS",n) * row(1) * col(k) * (0.5*U_[n-1]);//OS = N(N-1)
     }
 
     H.Anc(1) *= IQTensor(links.at(0)(1));
