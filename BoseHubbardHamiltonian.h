@@ -4,9 +4,6 @@
 #include <sstream>
 #include <mpo.h>
 #include <hambuilder.h>
-//#include <boost/lexical_cast.hpp>
-//#include <boost/tokenizer.hpp>
-
 
 #include "BoseHubbardSiteSet.h"
 
@@ -128,21 +125,19 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& model,
 {
     const int Ns = model_.N();
 
-    std::string tstr = opts.getString("t","0.01");
-    std::string Ustr = opts.getString("U","1");
-    //std::string mustr = opts.getString("mu","0");
-    std::string mustr = opts.getString("mu","0.0244067519637,0.107594683186,0.0513816880358,0.0224415914984,-0.0381726003305,0.0729470565333,-0.0312063943687,0.195886500391,0.231831380251,-0.0582792405871,0.145862519041,0.0144474598765");
-
+    std::string tstr = opts.getString("t");
     std::vector<std::string> tstrs = split(tstr, ',');
-    std::vector<std::string> Ustrs = split(Ustr, ',');
-    std::vector<std::string> mustrs = split(mustr, ',');
-
     tstrs.resize(Ns, tstrs.back());
-    Ustrs.resize(Ns, Ustrs.back());
-    mustrs.resize(Ns, mustrs.back());
-
     std::transform(tstrs.begin(), tstrs.end(), t_.begin(), stringtodouble);
+
+    std::string Ustr = opts.getString("U");
+    std::vector<std::string> Ustrs = split(Ustr, ',');
+    Ustrs.resize(Ns, Ustrs.back());
     std::transform(Ustrs.begin(), Ustrs.end(), U_.begin(), stringtodouble);
+
+    std::string mustr = opts.getString("mu");
+    std::vector<std::string> mustrs = split(mustr, ',');
+    mustrs.resize(Ns, mustrs.back());
     std::transform(mustrs.begin(), mustrs.end(), mu_.begin(), stringtodouble);
 
 }
@@ -158,7 +153,9 @@ init_()
 
     for(int n = 1; n <= Ns; ++n) {
         HamBuilder<IQTensor> muH(model_, model_.op("N",n), n);
-        H.plusEq(-mu_[n-1] * muH);
+        if(mu_[n-1] != 0) {
+            H.plusEq(-mu_[n-1] * muH);
+        }
         HamBuilder<IQTensor> UH(model_, model_.op("OS",n), n);
         H.plusEq(0.5*U_[n-1] * UH);
         if(n < Ns) {

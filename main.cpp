@@ -30,11 +30,16 @@ int main(int argc, char **argv)
     const int L = parms.getInt("L");
     const int nmax = parms.getInt("nmax");
     const int nsweeps = parms.getInt("nsweeps");
+    const Real errgoal = parms.getReal("errgoal");
     const int N = parms.getInt("N");
     const bool quiet = parms.getYesNo("quiet",true);    
     
     InputGroup table(parms,"sweeps");
     Sweeps sweeps(nsweeps,table);
+    
+    string t = parms.getString("t", "0.01");
+    string U = parms.getString("U", "1");
+    string mu = parms.getString("mu", "0.0244067519637,0.107594683186,0.0513816880358,0.0224415914984,-0.0381726003305,0.0729470565333,-0.0312063943687,0.195886500391,0.231831380251,-0.0582792405871,0.145862519041,0.0144474598765");
     
     /*int L = 12;
     int nmax = 7;
@@ -42,7 +47,7 @@ int main(int argc, char **argv)
     int N = 4;*/
     
     BoseHubbardSiteSet model(L, nmax);
-    IQMPO H = BoseHubbardHamiltonian(model);
+    IQMPO H = BoseHubbardHamiltonian(model, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
 
     InitState initState(model);
     for(int i = 1; i <= L; ++i) {
@@ -77,7 +82,7 @@ int main(int argc, char **argv)
     sweeps.noise() = 1E-6,1E-7,0.0;*/
     std::cout << sweeps;
     
-    BoseHubbardObserver<IQTensor> observer(psi);
+    BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
     
     Real E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
 
