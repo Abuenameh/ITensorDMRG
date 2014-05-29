@@ -133,7 +133,7 @@ getOp(int i, const String& opname, const OptSet& opts) const
         ivP.push_back(sP(n+1));
     }
 
-    IQTensor Op(conj(s),sP);
+    IQTensor Op(dag(s),sP);
 
     if(opname == "N") {
         for(int n = 0; n <= nmax_; n++) {

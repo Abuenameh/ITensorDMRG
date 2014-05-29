@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     ofstream outputfile(outputfilename);
     
     outputfile << "Ei ";
-    for(int j = 0; j < Ei.size(); ++j) {
+    for(unsigned int j = 0; j < Ei.size(); ++j) {
         outputfile << format("%.10e ", Ei[j]);
     }
     outputfile << endl;
