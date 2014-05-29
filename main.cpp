@@ -58,28 +58,48 @@ int main(int argc, char **argv)
     }
     IQMPS psi(initState);
 
-    std::vector<Index> links(L+1);
-    for(int l = 0; l <= L; ++l) links.at(l) = Index(nameint("hl",l),4);
+    //std::vector<Index> links(L+1);
+    //for(int l = 0; l <= L; ++l) links.at(l) = Index(nameint("hl",l),4);
+
+    std::vector<IQIndex> links(L+1);
+    for(int l = 0; l <= L; ++l) {
+        std::vector<IndexQN> indices;
+        for(int n = 0; n <= nmax; n++) {
+            indices.push_back(IndexQN(Index(nameint("n = ", n) + nameint(" for site ", l),1), QN(0,n,n%2)));
+        }
+        links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
+    }
 
     vector<vector<IQMPO> > COp;
 
     for(int i = 1; i <= L; ++i) {
         std::vector<IQMPO> Ci;
-        for(int j = 1; j <= L; ++j) {
-            HamBuilder<IQTensor> bdb(model);
-            bdb.set(model.op("Bdag",i),i,model.op("B",j),j);
-            Ci.push_back(bdb);
+		for(int j = 1; j <= L; ++j) {
+            IQMPO Cij(model);
+            for(int n = 1; n <= L; ++n) {
+                IQTensor& W = Cij.Anc(n);
+                IQIndex row = dag(links[n-1]), col = links[n];
+
+                W = IQTensor(dag(model.si(n)),model.siP(n),row,col);
+
+                if(i != j && (n == i || n == j)) {
+                    W += model.op("Bdag",n) * row(1) * col(2);
+                    W += model.op("B",n) * row(2) * col(4);
+                } else {
+                    for(int k = 1; k <= 4; ++k) {
+                        W += model.op("Id",n) * row(k) * col(k);
+                    }
+                }
+            }
+            Cij.Anc(1) *= IQTensor(links.at(0)(1));
+            Cij.Anc(L) *= IQTensor(dag(links.at(L)(4)));
+            Ci.push_back(Cij);
         }
         COp.push_back(Ci);
     }
 
     std::cout << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << std::endl;
 
-    /*Sweeps sweeps(10);
-    sweeps.maxm() = 10,20,100,100,200;
-    sweeps.cutoff() = 1E-10;
-    sweeps.niter() = 2;
-    sweeps.noise() = 1E-6,1E-7,0.0;*/
     std::cout << sweeps;
     
     BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
