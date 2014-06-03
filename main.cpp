@@ -49,7 +49,12 @@ int main(int argc, char **argv)
     string mu = parms.getString("mu", "0");
     
     BoseHubbardSiteSet sites(L, nmax);
-    IQMPO H = BoseHubbardHamiltonian(sites, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
+    BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites, Opt("t",t)&Opt("U",U)&Opt("mu",mu));
+	IQMPO H = BH;
+	
+	vector<Real> ts = BH.t();
+	vector<Real> Us = BH.U();
+	vector<Real> mus = BH.mu();
 
     InitState initState(sites);
 	int n0 = N / L;
@@ -127,12 +132,27 @@ int main(int argc, char **argv)
     string outputfilename(argv[2]);
     ofstream outputfile(outputfilename);
     
-    outputfile << "Ei ";
-    for(unsigned int j = 0; j < Ei.size(); ++j) {
-        outputfile << format("%.10e ", Ei[j]);
+    outputfile << "t ";
+    for(unsigned int j = 0; j < ts.size(); ++j) {
+        outputfile << format("%.20e ", ts[j]);
     }
     outputfile << endl;
-    outputfile << "E0 " << format("%.10e", E0) << endl;
+    outputfile << "U ";
+    for(unsigned int j = 0; j < Us.size(); ++j) {
+        outputfile << format("%.20e ", Us[j]);
+    }
+    outputfile << endl;
+    outputfile << "mu ";
+    for(unsigned int j = 0; j < mus.size(); ++j) {
+        outputfile << format("%.20e ", mus[j]);
+    }
+    outputfile << endl;
+    outputfile << "Ei ";
+    for(unsigned int j = 0; j < Ei.size(); ++j) {
+        outputfile << format("%.20e ", Ei[j]);
+    }
+    outputfile << endl;
+    outputfile << "E0 " << format("%.20e", E0) << endl;
     outputfile << "n ";
     for(int j = 1; j <= L; ++j) {
         outputfile << format("%.10e ", n(j));
