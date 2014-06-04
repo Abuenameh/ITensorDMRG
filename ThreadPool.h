@@ -17,6 +17,7 @@ public:
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args) 
         -> std::future<typename std::result_of<F(Args...)>::type>;
+    void interrupt();
     ~ThreadPool();
 private:
     // need to keep track of threads so we can join them
@@ -76,6 +77,12 @@ auto ThreadPool::enqueue(F&& f, Args&&... args)
     }
     condition.notify_one();
     return res;
+}
+
+void ThreadPool::interrupt()
+{
+    std::unique_lock<std::mutex> lock(queue_mutex);
+    stop = true;
 }
 
 // the destructor joins all threads
