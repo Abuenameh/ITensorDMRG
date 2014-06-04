@@ -37,7 +37,7 @@ using namespace boost::algorithm;
 
 #include <matrix.h>
 
-using namespace itensor
+using namespace itensor;
 
 template<typename T>
 class mathematica {
@@ -113,7 +113,7 @@ ostream& operator<<(ostream& out, const mathematica<complex<double> > m) {
     return out;
 }
 
-ostream& operator<<(ostream& out, const mathematica<VectorRef>& m) {
+ostream& operator<<(ostream& out, const mathematica<Vector>& m) {
     VectorRef& v = m.v;
     int len = v.Length();
     out << "{" << mathematica<Real>(v(1));
@@ -124,12 +124,21 @@ ostream& operator<<(ostream& out, const mathematica<VectorRef>& m) {
     return out;
 }
 
-ostream& operator<<(ostream& out, const mathematica<MatrixRef>& m) {
-    MatrixRef& m = m.v;
-    int r = m.Nrows();
-    out << "{" << mathematica<VectorRef>(m.Row(1));
+ostream& operator<<(ostream& out, const mathematica<Matrix>& m) {
+    MatrixRef& mat = m.v;
+    int r = mat.Nrows();
+    int c = mat.Ncols();
+    out << "{{" << mathematica<Real> (mat(1,1));
+    for (int j = 2; j <= c; j++) {
+        out << "," << mathematica<Real> (mat(1,j));
+    }
+    out << "}";
     for (int i = 2; i <= r; i++) {
-        out << "," << mathematica<VectorRef>(m.Row(i));
+        out << ",{" << mathematica<Real> (mat(i,1));
+        for (int j = 2; j <= c; j++) {
+            out << "," << mathematica<Real> (mat(i,j));
+        }
+        out << "}";
     }
     out << "}";
     return out;
@@ -249,11 +258,11 @@ mathematica<complex<double> > math(complex<double> c) {
 
 
 template<typename T> void printMath(ostream& out, string name, T& t) {
-    out << name << "=" << ::math(t) << ";" << endl;
+    out << name << "=" << math(t) << ";" << std::endl;
 }
 
 template<typename T> void printMath(ostream& out, string name, int i, T& t) {
-    out << name << "[" << i << "]" << "=" << ::math(t) << ";" << endl;
+    out << name << "[" << i << "]" << "=" << math(t) << ";" << std::endl;
 }
 
 
