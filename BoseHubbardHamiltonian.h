@@ -125,17 +125,17 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& sites,
 {
     const int Ns = sites_.N();
 
-    std::string tstr = opts.getString("t");
+    std::string tstr = opts.getString("t", "1");
     std::vector<std::string> tstrs = split(tstr, ',');
     tstrs.resize(Ns, tstrs.back());
     std::transform(tstrs.begin(), tstrs.end(), t_.begin(), stringtodouble);
 
-    std::string Ustr = opts.getString("U");
+    std::string Ustr = opts.getString("U", "1");
     std::vector<std::string> Ustrs = split(Ustr, ',');
     Ustrs.resize(Ns, Ustrs.back());
     std::transform(Ustrs.begin(), Ustrs.end(), U_.begin(), stringtodouble);
 
-    std::string mustr = opts.getString("mu");
+    std::string mustr = opts.getString("mu", "0");
     std::vector<std::string> mustrs = split(mustr, ',');
     mustrs.resize(Ns, mustrs.back());
     std::transform(mustrs.begin(), mustrs.end(), mu_.begin(), stringtodouble);
