@@ -113,6 +113,11 @@ ostream& operator<<(ostream& out, const mathematica<complex<double> > m) {
     return out;
 }
 
+ostream& operator<<(ostream& out, const mathematica<string> m) {
+    out << "\"" << m.v << "\"";
+    return out;
+}
+
 ostream& operator<<(ostream& out, const mathematica<Vector>& m) {
     VectorRef& v = m.v;
     int len = v.Length();

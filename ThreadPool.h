@@ -44,7 +44,7 @@ inline ThreadPool::ThreadPool(size_t threads)
                     std::unique_lock<std::mutex> lock(this->queue_mutex);
                     while(!this->stop && this->tasks.empty())
                         this->condition.wait(lock);
-                    if(this->stop && this->tasks.empty())
+                    if(this->stop || this->tasks.empty())
                         return;
                     std::function<void()> task(this->tasks.front());
                     this->tasks.pop();

@@ -6,6 +6,9 @@
 #include <hambuilder.h>
 
 #include <boost/multi_array.hpp>
+#include <boost/process.hpp>
+
+#include "zmq.hpp"
 
 #include "concurrent_queue.h"
 #include "ThreadPool.h"
@@ -36,6 +39,9 @@ using std::chrono::duration_cast;
 
 using boost::extents;
 using boost::multi_array;
+using namespace boost::process;
+using namespace boost::process::initializers;
+
 
 using namespace itensor;
 
@@ -67,9 +73,9 @@ void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, 
     Vector n(L), n2(L);
     Matrix C(L, L);
 
-    try {
-
         time_point<system_clock> start = system_clock::now();
+
+    try {
 
         BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
         BH.t(ts);
@@ -107,9 +113,6 @@ void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, 
             }
         }
 
-        time_point<system_clock> end = system_clock::now();
-        duration<double> runtime = end - start;
-
         res.E0 = E0;
         res.Ei = Ei;
     } catch(...) {
@@ -121,6 +124,10 @@ void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, 
             C.Row(i) = NAN;
         }
     }
+
+        time_point<system_clock> end = system_clock::now();
+        seconds runtime = duration_cast<seconds>(end - start);
+        res.runtime = runtime.count();
 
     res.n = n;
     res.n2 = n2;
@@ -157,27 +164,11 @@ string seconds_to_string(int s)
     h = h % 24;
     
     if(d > 0) {
-        //return format("%d day(s), %d hour(s), %d minute(s), %d second(s)", d, h, m, s);
         return format("%d d %d:%02d:%02d", d, h, m, s);
     }
     else {
         return format("%d:%02d:%02d", h, m, s);
     }
-    /*else if(h > 0) {
-        //return format("%d hour(s), %d minute(s), %d second(s)", h, m, s);
-        return format("%d:%02d:%02d", h, m, s);
-    }
-    else if(m > 0) {
-        //return format("%d minute(s), %d second(s)", m, s);
-        return format("%d:%02d", m, s);
-    }
-    else if(s > 0) {
-        //return format("%d second(s)", s);
-        return format("%d", s);
-    }
-    else {
-        return "0";
-    }*/
 }
 
 int main(int argc, char **argv)
@@ -209,7 +200,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 30;
+    int L = 20;
     int nmax = 7;
 
     int nsweeps = 5;
@@ -234,7 +225,7 @@ int main(int argc, char **argv)
     }
 
     string resdir = "/Users/Abuenameh/Documents/Simulation Results/BH-ITensor-DMRG/";
-    string resfile = resdir + "res." + to_string(resi) + ".txt";
+    string resfile = format("%s/res.%d.txt", resdir, resi);
     ofstream os(resfile);
     
     printMath(os, "seed", resi, seed);
@@ -313,6 +304,23 @@ int main(int argc, char **argv)
             pool.enqueue(bind(groundstate, ref(resq), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN]));
         }
     }
+    
+    string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
+    string script = "/Users/Abuenameh/PycharmProjects/DMRG/ZMQProgressDialog.py";
+    vector<string> args;
+    args.push_back(python);
+    args.push_back(script);
+    
+    child c = execute(set_args(args), inherit_env());
+    
+    zmq::context_t context(1);
+    zmq::socket_t socket(context, ZMQ_PUSH);
+    
+    socket.connect("tcp://localhost:5556");
+    string len = to_string(nt*nN);
+    zmq::message_t lenmessage(len.length());
+    memcpy ((void *) lenmessage.data (), len.c_str(), len.length());
+    socket.send(lenmessage);
 
     interrupted = false;
     signal(SIGINT, sigint);
@@ -328,6 +336,27 @@ int main(int argc, char **argv)
     multi_array<Vector, 2> nres(extents[nt][nN]);
     multi_array<Vector, 2> n2res(extents[nt][nN]);
     multi_array<Matrix, 2> Cres(extents[nt][nN]);
+    multi_array<string, 2> runtimei(extents[nt][nN]);
+    
+    for(int it = 0; it < nt; ++it) {
+        for(int iN = 0; iN < nN; ++iN) {
+            tres[it][iN] = vector<Real>(L, NAN);
+            Ures[it][iN] = vector<Real>(L, NAN);
+            mures[it][iN] = vector<Real>(L, NAN);
+            E0res[it][iN] = NAN;
+            Eires[it][iN] = vector<Real>(1, NAN);
+            nres[it][iN] = Vector(L);
+            nres[it][iN] = NAN;
+            n2res[it][iN] = Vector(L);
+            n2res[it][iN] = NAN;
+            Cres[it][iN] = Matrix(L, L);
+            for(int i = 1; i <= L; ++i) {
+                Cres[it][iN].Row(i) = NAN;
+            }
+            runtimei[it][iN] = "unfinished";
+        }
+    }
+    
     while(!interrupted && count++ < nt*nN) {
         resq.wait_and_pop(res);
         int it = res.it;
@@ -340,22 +369,40 @@ int main(int argc, char **argv)
         nres[it][iN] = res.n;
         n2res[it][iN] = res.n2;
         Cres[it][iN] = res.C;
+        runtimei[it][iN] = seconds_to_string(res.runtime);
+        zmq::message_t message(sizeof(int));
+        ((int*)message.data())[0] = 1;
+        socket.send(message);
     }
+    
+    pool.interrupt();
+    terminate(c);
 
+    int here = 0;
+
+    cout << tres[0][5][0] << endl;
+    cout << "Here " << ++here << endl;
     printMath(os, "tres", resi, tres);
+    cout << "Here " << ++here << endl;
     printMath(os, "Ures", resi, Ures);
+    cout << "Here " << ++here << endl;
     printMath(os, "mures", resi, mures);
+    cout << "Here " << ++here << endl;
     printMath(os, "E0res", resi, E0res);
+    cout << "Here " << ++here << endl;
     printMath(os, "Eires", resi, Eires);
+    cout << "Here " << ++here << endl;
     printMath(os, "nres", resi, nres);
+    cout << "Here " << ++here << endl;
     printMath(os, "n2res", resi, n2res);
+    cout << "Here " << ++here << endl;
     printMath(os, "Cres", resi, Cres);
+    cout << "Here " << ++here << endl;
+    printMath(os, "runtimei", resi, runtimei);
 
     time_point<system_clock> end = system_clock::now();
-    seconds runtime = duration_cast<seconds>(end - start);
-    //std::chrono::minutes runtime = std::chrono::duration_cast<std::chrono::minutes>(end - start);
-    cout << "runtime = " << runtime.count() << endl;
-    os << format("runtime[%d]=\"%s\"", resi, seconds_to_string(runtime.count())) << endl;
-
+    string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
+    printMath(os, "runtime", resi, runtime);
+    
     return 0;
 }
