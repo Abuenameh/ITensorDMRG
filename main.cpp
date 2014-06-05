@@ -53,25 +53,42 @@ struct Results {
     vector<Real> mus;
     Real E0;
     vector<Real> Ei;
-    Vector n;
-    Vector n2;
-    Matrix C;
+    Vector& n;
+    Vector& n2;
+    Matrix& C;
     int runtime;
 };
 
-void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, bool quiet, BoseHubbardSiteSet& sites, vector<vector<IQMPO> >& COp, int it, int iN, vector<Real> ts, vector<Real> Us, vector<Real> mus, int N)
+string seconds_to_string(int s)
 {
-    Results res;
+    int m = s / 60;
+    s = s % 60;
+    int h = m / 60;
+    m = m % 60;
+    int d = h / 24;
+    h = h % 24;
+    
+    if(d > 0) {
+        return format("%d d %d:%02d:%02d", d, h, m, s);
+    }
+    else {
+        return format("%d:%02d:%02d", h, m, s);
+    }
+}
+
+void groundstate(/*concurrent_queue<Results>& resq,*/concurrent_queue<int>& q, Sweeps& sweeps, Real errgoal, bool quiet, BoseHubbardSiteSet& sites, vector<vector<IQMPO> >& COp, int it, int iN, vector<Real> ts, vector<Real> Us, vector<Real> mus, int N, Real& E0, vector<Real>& Ei, Vector& n, Vector& n2, Matrix& C, string& runtime)
+{
+    /*Results res;
     res.it = it;
     res.iN = iN;
     res.ts = ts;
     res.Us = Us;
-    res.mus = mus;
+    res.mus = mus;*/
 
     int L = sites.N();
 
-    Vector n(L), n2(L);
-    Matrix C(L, L);
+    //Vector n(L), n2(L);
+    //Matrix C(L, L);
 
         time_point<system_clock> start = system_clock::now();
 
@@ -98,11 +115,11 @@ void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, 
 
         BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
 
-        Real E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
+        /*Real*/ E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
 
         cout << format("\nGround State Energy = %.10f",E0) << endl;
 
-        vector<Real> Ei = observer.getEnergies();
+        /*vector<Real>*/ Ei = observer.getEnergies();
 
         for(int j = 1; j <= L; ++j) {
             psi.position(j);
@@ -113,27 +130,30 @@ void groundstate(concurrent_queue<Results>& resq, Sweeps& sweeps, Real errgoal, 
             }
         }
 
-        res.E0 = E0;
-        res.Ei = Ei;
+        /*res.E0 = E0;
+        res.Ei = Ei;*/
     } catch(...) {
-        res.E0 = NAN;
-        res.Ei = vector<Real>(1, NAN);
-        n = NAN;
+        /*res.E0 = NAN;
+        res.Ei = vector<Real>(1, NAN);*/
+        /*n = NAN;
         n2 = NAN;
         for(int i = 1; i <= L; ++i) {
             C.Row(i) = NAN;
-        }
+        }*/
     }
 
         time_point<system_clock> end = system_clock::now();
-        seconds runtime = duration_cast<seconds>(end - start);
-        res.runtime = runtime.count();
+        //seconds runtime = duration_cast<seconds>(end - start);
+        //res.runtime = runtime.count();
+        runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
 
-    res.n = n;
+    /*res.n = n;
     res.n2 = n2;
-    res.C = C;
+    res.C = C;*/
 
-    resq.push(res);
+    //resq.push(res);
+    
+    q.push(1);
 }
 
 vector<Real> linspace(Real min, Real max, int n)
@@ -152,28 +172,6 @@ atomic_bool interrupted;
 void sigint(int)
 {
     interrupted = true;
-}
-
-void sigabort(int)
-{
-	int a = 1;
-}
-
-string seconds_to_string(int s)
-{
-    int m = s / 60;
-    s = s % 60;
-    int h = m / 60;
-    m = m % 60;
-    int d = h / 24;
-    h = h % 24;
-    
-    if(d > 0) {
-        return format("%d d %d:%02d:%02d", d, h, m, s);
-    }
-    else {
-        return format("%d:%02d:%02d", h, m, s);
-    }
 }
 
 int main(int argc, char **argv)
@@ -304,14 +302,47 @@ int main(int argc, char **argv)
 
     ThreadPool pool(numthreads);
     concurrent_queue<Results> resq;
+    concurrent_queue<int> q;
 
     vector<Real> Us(L, 1);
     vector<Real> mus(L, 0);
 
+    multi_array<vector<Real>, 2> tres(extents[nt][nN]);
+    multi_array<vector<Real>, 2> Ures(extents[nt][nN]);
+    multi_array<vector<Real>, 2> mures(extents[nt][nN]);
+    multi_array<Real, 2> E0res(extents[nt][nN]);
+    multi_array<vector<Real>, 2> Eires(extents[nt][nN]);
+    multi_array<Vector, 2> nres(extents[nt][nN]);
+    multi_array<Vector, 2> n2res(extents[nt][nN]);
+    multi_array<Matrix, 2> Cres(extents[nt][nN]);
+    multi_array<string, 2> runtimei(extents[nt][nN]);
+
+    for(int it = 0; it < nt; ++it) {
+        for(int iN = 0; iN < nN; ++iN) {
+            tres[it][iN] = vector<Real>(L, NAN);
+            Ures[it][iN] = vector<Real>(L, NAN);
+            mures[it][iN] = vector<Real>(L, NAN);
+            E0res[it][iN] = NAN;
+            Eires[it][iN] = vector<Real>(1, NAN);
+            nres[it][iN] = Vector(L);
+            nres[it][iN] = NAN;
+            n2res[it][iN] = Vector(L);
+            n2res[it][iN] = NAN;
+            Cres[it][iN] = Matrix(L, L);
+            for(int i = 1; i <= L; ++i) {
+                Cres[it][iN].Row(i) = NAN;
+            }
+            runtimei[it][iN] = "unfinished";
+        }
+    }
+    
     for(int it = 0; it < nt; ++it) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> ts(L, tv[it]);
-            pool.enqueue(bind(groundstate, ref(resq), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN]));
+            tres[it][iN] = ts;
+            Ures[it][iN] = Us;
+            mures[it][iN] = mus;
+            pool.enqueue(bind(groundstate, /*ref(resq),*/ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
         }
     }
     
@@ -335,17 +366,16 @@ int main(int argc, char **argv)
     socket.connect("tcp://localhost:5556");
     string len = to_string(nt*nN);
     zmq::message_t lenmessage(len.length());
-    memcpy ((void *) lenmessage.data (), len.c_str(), len.length());
+    memcpy ((void *) lenmessage.data(), len.c_str(), len.length());
     socket.send(lenmessage);
 
     interrupted = false;
     signal(SIGINT, sigint);
-	//signal(SIGABRT, sigabort);
 
     int count = 0;
 
-    Results res;
-    multi_array<vector<Real>, 2> tres(extents[nt][nN]);
+    //Results res;
+    /*multi_array<vector<Real>, 2> tres(extents[nt][nN]);
     multi_array<vector<Real>, 2> Ures(extents[nt][nN]);
     multi_array<vector<Real>, 2> mures(extents[nt][nN]);
     multi_array<Real, 2> E0res(extents[nt][nN]);
@@ -353,9 +383,9 @@ int main(int argc, char **argv)
     multi_array<Vector, 2> nres(extents[nt][nN]);
     multi_array<Vector, 2> n2res(extents[nt][nN]);
     multi_array<Matrix, 2> Cres(extents[nt][nN]);
-    multi_array<string, 2> runtimei(extents[nt][nN]);
+    multi_array<string, 2> runtimei(extents[nt][nN]);*/
     
-    for(int it = 0; it < nt; ++it) {
+    /*for(int it = 0; it < nt; ++it) {
         for(int iN = 0; iN < nN; ++iN) {
             tres[it][iN] = vector<Real>(L, NAN);
             Ures[it][iN] = vector<Real>(L, NAN);
@@ -372,11 +402,13 @@ int main(int argc, char **argv)
             }
             runtimei[it][iN] = "unfinished";
         }
-    }
+    }*/
     
+    int qi;
     while(!interrupted && count++ < nt*nN) {
-        resq.wait_and_pop(res);
-        int it = res.it;
+        q.wait_and_pop(qi);
+        //resq.wait_and_pop(res);
+        /*int it = res.it;
         int iN = res.iN;
         tres[it][iN] = res.ts;
         Ures[it][iN] = res.Us;
@@ -386,7 +418,7 @@ int main(int argc, char **argv)
         nres[it][iN] = res.n;
         n2res[it][iN] = res.n2;
         Cres[it][iN] = res.C;
-        runtimei[it][iN] = seconds_to_string(res.runtime);
+        runtimei[it][iN] = seconds_to_string(res.runtime);*/
         zmq::message_t message(sizeof(int));
         ((int*)message.data())[0] = 1;
         socket.send(message);
