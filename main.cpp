@@ -305,8 +305,14 @@ int main(int argc, char **argv)
         }
     }
     
+    #ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
     string script = "/Users/Abuenameh/PycharmProjects/DMRG/ZMQProgressDialog.py";
+    #endif
+    #ifdef AMAZON_EC2
+    string python = "python";
+    string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
+    #endif
     vector<string> args;
     args.push_back(python);
     args.push_back(script);
