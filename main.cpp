@@ -378,26 +378,14 @@ int main(int argc, char **argv)
     pool.interrupt();
     terminate(c);
 
-    int here = 0;
-
-    cout << tres[0][5][0] << endl;
-    cout << "Here " << ++here << endl;
     printMath(os, "tres", resi, tres);
-    cout << "Here " << ++here << endl;
     printMath(os, "Ures", resi, Ures);
-    cout << "Here " << ++here << endl;
     printMath(os, "mures", resi, mures);
-    cout << "Here " << ++here << endl;
     printMath(os, "E0res", resi, E0res);
-    cout << "Here " << ++here << endl;
     printMath(os, "Eires", resi, Eires);
-    cout << "Here " << ++here << endl;
     printMath(os, "nres", resi, nres);
-    cout << "Here " << ++here << endl;
     printMath(os, "n2res", resi, n2res);
-    cout << "Here " << ++here << endl;
     printMath(os, "Cres", resi, Cres);
-    cout << "Here " << ++here << endl;
     printMath(os, "runtimei", resi, runtimei);
 
     time_point<system_clock> end = system_clock::now();
