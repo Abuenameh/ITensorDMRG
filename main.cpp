@@ -224,7 +224,12 @@ int main(int argc, char **argv)
         noise[sw] = sweeps.noise(sw);
     }
 
-    string resdir = "/Users/Abuenameh/Documents/Simulation Results/BH-ITensor-DMRG/";
+#ifdef MACOSX
+    string resdir = "/Users/Abuenameh/Documents/Simulation Results/BH-ITensor-DMRG";
+#endif
+#ifdef AMAZON_EC2
+    string resdir = "/home/ubuntu/Dropbox/Amazon EC2/Simulation Results/BH-ITensor-DMRG";
+#endif
     string resfile = format("%s/res.%d.txt", resdir, resi);
     ofstream os(resfile);
     
@@ -305,14 +310,14 @@ int main(int argc, char **argv)
         }
     }
     
-    #ifdef MACOSX
+#ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
     string script = "/Users/Abuenameh/PycharmProjects/DMRG/ZMQProgressDialog.py";
-    #endif
-    #ifdef AMAZON_EC2
+#endif
+#ifdef AMAZON_EC2
     string python = "python";
     string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
-    #endif
+#endif
     vector<string> args;
     args.push_back(python);
     args.push_back(script);
