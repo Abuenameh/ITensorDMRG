@@ -154,6 +154,11 @@ void sigint(int)
     interrupted = true;
 }
 
+void sigabort(int)
+{
+	int a = 1;
+}
+
 string seconds_to_string(int s)
 {
     int m = s / 60;
@@ -315,7 +320,7 @@ int main(int argc, char **argv)
     string script = "/Users/Abuenameh/PycharmProjects/DMRG/ZMQProgressDialog.py";
 #endif
 #ifdef AMAZON_EC2
-    string python = "python";
+    string python = "/usr/bin/python";
     string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
     vector<string> args;
@@ -335,6 +340,7 @@ int main(int argc, char **argv)
 
     interrupted = false;
     signal(SIGINT, sigint);
+	//signal(SIGABRT, sigabort);
 
     int count = 0;
 
@@ -402,6 +408,8 @@ int main(int argc, char **argv)
     time_point<system_clock> end = system_clock::now();
     string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
     printMath(os, "runtime", resi, runtime);
-    
+	
+    exit(0);
+	
     return 0;
 }
