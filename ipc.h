@@ -3,6 +3,8 @@
 
 #include <sstream>
 
+#include <boost/iostreams/stream.hpp>
+
 #include <ipc_channel.h>
 #include <ipc_msg_dispatch.h>
 #include <ipc_codec.h>
@@ -12,6 +14,45 @@
 
 using std::string;
 using std::stringstream;
+
+void write(std::ostream& os, BoseHubbardSiteSet& sites) {
+    sites.write(os);
+    os.flush();
+}
+
+template<class T>
+void write(std::ostream& os, T& t) {
+    os.write(reinterpret_cast<char*>(&t), sizeof(T));
+    os.flush();
+}
+
+template<class T>
+void write(std::ostream& os, std::vector<T>& v) {
+    int len = v.size();
+    write(os, len);
+    for(int i = 0; i < len; i++) {
+        write(os, v[i]);
+    }
+}
+
+void read(std::istream& is, BoseHubbardSiteSet& sites) {
+    sites.read(is);
+}
+
+template<class T>
+void read(std::istream& is, T& t) {
+    is.read(reinterpret_cast<char*>(&t), sizeof(T));
+}
+
+template<class T>
+void read(std::istream& is, std::vector<T>& v) {
+    int len;
+    read(is, len);
+    v.resize(len);
+    for(int i = 0; i < len; i++) {
+        read(is, v[i]);
+    }
+}
 
 typedef ipc::Channel<PipeTransport, ipc::Encoder, ipc::Decoder> PipeChannel;
 

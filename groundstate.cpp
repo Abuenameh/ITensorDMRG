@@ -82,8 +82,25 @@ void send_message(socket_t& socket, T& v)
 int main(int argc, char **argv)
 {
     BoseHubbardSiteSet qwe;
-    qwe.read(std::cin);
-    cout << qwe << endl;
+    cerr << "About to read" << endl;
+    //qwe.read(std::cin);
+    read(std::cin, qwe);
+    cerr << qwe << endl;
+    cerr << "Read" << endl;
+    //int d = std::cin.get();
+    //cerr << d << endl;
+    int a, b, c;
+    //std::cin >> a >> a;
+    read(std::cin, a);
+    vector<double> v;
+    read(std::cin, v);
+    for(int i = 0; i < v.size(); i++) {
+        cerr << v[i] << " ";
+    }
+    cerr << endl;
+    //cerr << a << endl;
+    //std::cin >> a >> b >> c;
+    //cerr << a << endl << b << endl << c << endl;
     return 0;
     
     int port = stoi(argv[1]);

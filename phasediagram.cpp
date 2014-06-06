@@ -10,6 +10,7 @@
 
 #include <zmq.hpp>
 
+#include "ipc.h"
 #include "concurrent_queue.h"
 #include "ThreadPool.h"
 #include "mathematica.h"
@@ -225,14 +226,16 @@ int main(int argc, char **argv)
         return 1;
     }
     
-    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&sites] (socket_t& out, socket_t& in, ostream& os) {
-        cout << "Init called" << endl;
-        stringstream ss(stringstream::in | stringstream::out | stringstream::binary);
-        sites.write(ss);
-        //out.send(ss.str().data(), ss.str().size());
-        sites.write(os);
-        cout << "Init finished" << endl;
+    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&sites] (ostream& os, istream& is) {
+        //sites.write(os);
+        write(os, sites);
+        int a = 10;
+        write(os, a);
+        vector<double> v = {0.1, 0.2, 0.3};
+        write(os, v);
+        //os.flush();
     });
+    cout << "Pool created" << endl;
 
     /*ThreadPool pool(numthreads);
     concurrent_queue<Results> resq;

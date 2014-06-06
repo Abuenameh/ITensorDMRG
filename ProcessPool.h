@@ -11,10 +11,10 @@
 #include <functional>
 #include <stdexcept>
 
-#include <zmq.hpp>
+//#include <zmq.hpp>
 
-#include <boost/iostreams/stream.hpp>
 #include <boost/process.hpp>
+#include <boost/iostreams/stream.hpp>
 
 using namespace std;
 using namespace zmq;
@@ -22,7 +22,9 @@ using namespace boost::iostreams;
 using namespace boost::process;
 using namespace boost::process::initializers;
 
-typedef function<void(socket_t&, socket_t&, ostream&)> callback;
+typedef function<void(ostream&, istream&)> callback;
+typedef stream<file_descriptor_sink> postream;
+typedef stream<file_descriptor_source> pistream;
 
 class ProcessPool {
 public:
@@ -34,8 +36,8 @@ public:
     ~ProcessPool();
 private:
     vector<child> children;
-    vector<socket_t> socketsout;
-    vector<socket_t> socketsin;
+    vector<ostream> oss;
+    vector<istream> iss;
     // need to keep track of threads so we can join them
     vector<thread> workers;
     // the task queue
@@ -51,48 +53,37 @@ private:
 inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
     :   stop(false)
 {
-    context_t context;
-    string addr;
-    //socket_t socketin;
-    //socket_t socketout;
-    int port = 5555;
     vector< string > args;
     args.push_back(prog);
-    args.push_back("");
+//    args.push_back("");
     for(size_t i = 0;i<processes;++i) {
-        args[1] = to_string(port + 2*i);
+//        args[1] = to_string(port + 2*i);
         
-        /*socketin = socket_t(context, ZMQ_PULL);
-        addr = "tcp://localhost:" + to_string(port + 2*i);
-        socketin.connect(addr.c_str());
-        socketsin.emplace_back(socketin);*/
+        boost::process::pipe pin = create_pipe();
+        file_descriptor_sink insink(pin.sink, never_close_handle);
+        file_descriptor_source insource(pin.source, never_close_handle);
         
-        /*socketout = socket_t(context, ZMQ_PUSH);
-        addr = "tcp://localhost:" + to_string(port + 2*i + 1);
-        socketin.connect(addr.c_str());
-        socketsout.emplace_back(socketout);*/
+        boost::process::pipe pout = create_pipe();
+        file_descriptor_sink outsink(pout.sink, never_close_handle);
+        file_descriptor_source outsource(pout.source, never_close_handle);
         
-        socketsout.emplace_back(context, ZMQ_PUSH);
-        addr = "tcp://localhost:" + to_string(port + 2*i);
-        //socketsout.back().connect(addr.c_str());
-
-        socketsin.emplace_back(context, ZMQ_PULL);
-        addr = "tcp://localhost:" + to_string(port + 2*i + 1);
-        //socketsin.back().bind(addr.c_str());
+        stream<file_descriptor_sink> os(insink);
+        //oss.push_back(os);
+        //oss.emplace_back(insink);
         
-        boost::process::pipe p = create_pipe();
-        file_descriptor_sink sink(p.sink, never_close_handle);
+        stream<file_descriptor_source> is(outsource);
+        //iss.push_back(is);
+        //iss.emplace_back(outsource);
         
-        file_descriptor_source source(p.source, never_close_handle);
+        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink)));
         
-        stream<file_descriptor_sink> os(sink);
+        //init(oss.back(), iss.back());
+        init(os, is);
         
-        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(source)));
-        
-        init(socketsout.back(), socketsin.back(), os);
+        wait_for_exit(children.back());
         
         workers.emplace_back(
-            [this,i,&os]
+            [this,i,&os,&is]
             {
                 for(;;)
                 {
@@ -104,7 +95,8 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
                     callback task(this->tasks.front());
                     this->tasks.pop();
                     lock.unlock();
-                    task(this->socketsout[i], this->socketsin[i], os);
+                    //task(this->oss[i], this->iss[i]);
+                    task(os, is);
                 }
             }
         );
