@@ -47,6 +47,14 @@ using namespace boost::process::initializers;
 
 using namespace itensor;
 
+struct Results
+{
+    IQMPS psi0;
+    Real E0;
+    vector<Real> Ei;
+    int runtime;
+};
+
 string seconds_to_string(int s)
 {
     int m = s / 60;
@@ -114,10 +122,10 @@ int main(int argc, char **argv)
     double ximax = stod(argv[2]);
     int seed = stoi(argv[3]);
 
-    const Real tmin = stod(argv[4]);
-    const Real tmax = stod(argv[5]);
-    const int nt = stoi(argv[6]);
-    vector<Real> tv = linspace(tmin, tmax, nt);
+    const Real xmin = stod(argv[4]);
+    const Real xmax = stod(argv[5]);
+    const int nx = stoi(argv[6]);
+    vector<Real> xv = linspace(xmin, xmax, nx);
 
     const int Nmin = stoi(argv[7]);
     const int Nmax = stoi(argv[8]);
@@ -137,16 +145,19 @@ int main(int argc, char **argv)
     bool quiet = true;
 
     Sweeps sweeps(nsweeps);
+    sweeps.minm() = 20;
     sweeps.maxm() = 10,20,100,100,200;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 2;
     sweeps.noise() = 1E-7,1E-8,0.0;
     
+    vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
     vector<Real> cutoff(nsweeps);
     vector<int> niter(nsweeps);
     vector<Real> noise(nsweeps);
     for(int sw = 0; sw < nsweeps; ++sw) {
+        minm[sw] = sweeps.minm(sw);
         maxm[sw] = sweeps.maxm(sw);
         cutoff[sw] = sweeps.cutoff(sw);
         niter[sw] = sweeps.niter(sw);
@@ -172,7 +183,7 @@ int main(int argc, char **argv)
     printMath(os, "cutoff", resi, cutoff);
     printMath(os, "niter", resi, niter);
     printMath(os, "noise", resi, noise);
-    printMath(os, "ts", resi, tv);
+    printMath(os, "ts", resi, xv);
     printMath(os, "Ns", resi, Nv);
     
     BoseHubbardSiteSet sites;
@@ -226,16 +237,37 @@ int main(int argc, char **argv)
         return 1;
     }
     
-    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&sites] (ostream& os, istream& is) {
-        //sites.write(os);
+    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&] (ostream& os, istream& is) {
         write(os, sites);
-        int a = 10;
-        write(os, a);
-        vector<double> v = {0.1, 0.2, 0.3};
-        write(os, v);
-        //os.flush();
+        write(os, nsweeps);
+        write(os, minm);
+        write(os, maxm);
+        write(os, niter);
+        write(os, cutoff);
+        write(os, noise);
+        write(os, errgoal);
+        write(os, quiet);
     });
     cout << "Pool created" << endl;
+    
+    concurrent_queue<Results> resq;
+
+    vector<Real> Us(L, 1);
+    vector<Real> mus(L, 0);
+
+    for(int ix = 0; ix < nx; ++ix) {
+        for(int iN = 0; iN < nN; ++iN) {
+            vector<Real> xs(L, xv[ix]);
+            pool.enqueue([](ostream& os, istream& is) { cout << "Callback"; });
+            /*pool.enqueue(std::bind([] (concurrent_queue<Results>& resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N, ostream& os, istream& is) {
+                
+            }, ref(resq), ix, iN, xs, Us, mus, Nv[iN], std::placeholders::_1, std::placeholders::_2));*/
+            //tres[it][iN] = ts;
+            //Ures[it][iN] = Us;
+            //mures[it][iN] = mus;
+            //pool.enqueue(bind(groundstate, ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
+        }
+    }
 
     /*ThreadPool pool(numthreads);
     concurrent_queue<Results> resq;
@@ -301,7 +333,7 @@ int main(int argc, char **argv)
     zmq::socket_t socket(context, ZMQ_PUSH);
     
     socket.connect("tcp://localhost:5556");
-    string len = to_string(nt*nN);
+    string len = to_string(nx*nN);
     zmq::message_t lenmessage(len.length());
     memcpy ((void *) lenmessage.data(), len.c_str(), len.length());
     socket.send(lenmessage);
@@ -342,7 +374,7 @@ int main(int argc, char **argv)
     }*/
     
     int qi;
-    while(!interrupted && count++ < nt*nN) {
+    while(!interrupted && count++ < nx*nN) {
         //q.wait_and_pop(qi);
         //resq.wait_and_pop(res);
         /*int it = res.it;

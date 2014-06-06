@@ -11,13 +11,11 @@
 #include <functional>
 #include <stdexcept>
 
-//#include <zmq.hpp>
-
 #include <boost/process.hpp>
 #include <boost/iostreams/stream.hpp>
 
 using namespace std;
-using namespace zmq;
+using namespace std::placeholders;
 using namespace boost::iostreams;
 using namespace boost::process;
 using namespace boost::process::initializers;
@@ -31,7 +29,7 @@ public:
     ProcessPool(size_t, string, callback);
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args) 
-        -> future<typename result_of<F(Args...)>::type>;
+        -> future<typename result_of<F(ostream&, istream&, Args...)>::type>;
     void interrupt();
     ~ProcessPool();
 private:
@@ -106,22 +104,25 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
 // add new work item to the pool
 template<class F, class... Args>
 auto ProcessPool::enqueue(F&& f, Args&&... args) 
-    -> future<typename result_of<F(Args...)>::type>
+    -> future<typename result_of<F(ostream&, istream&, Args...)>::type>
+//future<void> ProcessPool::enqueue(F&& f, Args&&... args) 
 {
-    typedef typename result_of<F(Args...)>::type return_type;
+    typedef typename result_of<F(ostream&, istream&, Args...)>::type return_type;
+    //typedef void return_type;
     
     // don't allow enqueueing after stopping the pool
     if(stop)
         throw runtime_error("enqueue on stopped ProcessPool");
 
-    auto task = make_shared< packaged_task<return_type()> >(
-            bind(forward<F>(f), forward<Args>(args)...)
+    //auto task = make_shared< packaged_task<void(ostream&, istream&)> >(
+    auto task = std::make_shared< std::packaged_task<return_type(ostream&, istream&)> >(
+            bind(forward<F>(f), placeholders::_1, placeholders::_2, forward<Args>(args)...)
         );
         
     future<return_type> res = task->get_future();
     {
         unique_lock<mutex> lock(queue_mutex);
-        tasks.push([task](){ (*task)(); });
+        tasks.push([task](ostream& os, istream& is){ (*task)(os, is); });
     }
     condition.notify_one();
     return res;

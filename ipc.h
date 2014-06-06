@@ -20,6 +20,11 @@ void write(std::ostream& os, BoseHubbardSiteSet& sites) {
     os.flush();
 }
 
+void write(std::ostream& os, IQMPS& mps) {
+    mps.write(os);
+    os.flush();
+}
+
 template<class T>
 void write(std::ostream& os, T& t) {
     os.write(reinterpret_cast<char*>(&t), sizeof(T));
@@ -37,6 +42,10 @@ void write(std::ostream& os, std::vector<T>& v) {
 
 void read(std::istream& is, BoseHubbardSiteSet& sites) {
     sites.read(is);
+}
+
+void read(std::istream& is, IQMPS& mps) {
+    mps.read(is);
 }
 
 template<class T>
