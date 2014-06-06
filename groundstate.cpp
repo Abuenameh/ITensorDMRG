@@ -51,41 +51,39 @@ int main(int argc, char **argv)
 {
     BoseHubbardSiteSet sites;
     read(cin, sites);
-        const int L = sites.N();
-        //const int nmax = sites.nmax();
-        
-        int nsweeps;
-        read(cin, nsweeps);
-        
-        Sweeps sweeps(nsweeps);
+    const int L = sites.N();
+    //const int nmax = sites.nmax();
 
-        vector<int> minm(nsweeps), maxm(nsweeps), niter(nsweeps);
-        vector<Real> cutoff(nsweeps), noise(nsweeps);
-        
-        read(cin, minm);
-        read(cin, maxm);
-        read(cin, niter);
-        read(cin, cutoff);
-        read(cin, noise);
-        for(int sw = 1; sw <= nsweeps; sw++) {
-            sweeps.setminm(sw, minm[sw-1]);
-            sweeps.setmaxm(sw, maxm[sw-1]);
-            sweeps.setniter(sw, niter[sw-1]);
-            sweeps.setcutoff(sw, cutoff[sw-1]);
-            sweeps.setnoise(sw, noise[sw-1]);
-        }
+    int nsweeps;
+    read(cin, nsweeps);
 
-        Real errgoal;
-        read(cin, errgoal);
+    Sweeps sweeps(nsweeps);
 
-        bool quiet;
-        read(cin, quiet);
-        
-        
-        bool stop = false;
-        
+    vector<int> minm(nsweeps), maxm(nsweeps), niter(nsweeps);
+    vector<Real> cutoff(nsweeps), noise(nsweeps);
+
+    read(cin, minm);
+    read(cin, maxm);
+    read(cin, niter);
+    read(cin, cutoff);
+    read(cin, noise);
+    for(int sw = 1; sw <= nsweeps; sw++) {
+        sweeps.setminm(sw, minm[sw-1]);
+        sweeps.setmaxm(sw, maxm[sw-1]);
+        sweeps.setniter(sw, niter[sw-1]);
+        sweeps.setcutoff(sw, cutoff[sw-1]);
+        sweeps.setnoise(sw, noise[sw-1]);
+    }
+
+    Real errgoal;
+    read(cin, errgoal);
+
+    bool quiet;
+    read(cin, quiet);
+
+
     while(true) {
-        
+
         vector<Real> Js(L), Us(L), mus(L);
 
         read(cin, Js);
@@ -94,7 +92,7 @@ int main(int argc, char **argv)
 
         int N;
         read(cin, N);
-        
+
         time_point<system_clock> start = system_clock::now();
 
         IQMPS psi0;
@@ -109,7 +107,7 @@ int main(int argc, char **argv)
             BH.mu(mus);
 
             IQMPO H = BH;
-            
+
             InitState initState(sites);
             int n0 = N / L;
             for(int i = 1; i <= L; ++i) {
@@ -121,12 +119,10 @@ int main(int argc, char **argv)
             IQMPS psi(initState);
 
             cerr << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
-            
+
             BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
-            cerr << "Created observer" << endl;
 
             E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
-            cerr << "Did DMRG" << endl;
 
             psi0 = psi;
 

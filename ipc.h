@@ -20,11 +20,6 @@ void write(std::ostream& os, BoseHubbardSiteSet& sites) {
     os.flush();
 }
 
-void write(std::ostream& os, IQMPS& mps) {
-    mps.write(os);
-    os.flush();
-}
-
 template<class T>
 void write(std::ostream& os, T& t) {
     os.write(reinterpret_cast<char*>(&t), sizeof(T));
@@ -38,6 +33,16 @@ void write(std::ostream& os, std::vector<T>& v) {
     for(int i = 0; i < len; i++) {
         write(os, v[i]);
     }
+}
+
+void write(std::ostream& os, IQMPS& mps) {
+    stringstream ss(std::ios_base::out);
+    mps.write(ss);
+    int len = ss.str().length();
+    write(os, len);
+    os.write(ss.str().data(), len);
+    //mps.write(os);
+    os.flush();
 }
 
 void read(std::istream& is, BoseHubbardSiteSet& sites) {

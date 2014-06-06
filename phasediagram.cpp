@@ -49,7 +49,13 @@ using namespace itensor;
 
 struct Results
 {
-    IQMPS psi0;
+    int ix;
+    int iN;
+    vector<Real> xs;
+    vector<Real> Us;
+    vector<Real> mus;
+    //IQMPS psi0;
+    string psi0;
     Real E0;
     vector<Real> Ei;
     int runtime;
@@ -71,23 +77,6 @@ string seconds_to_string(int s)
         return format("%d:%02d:%02d", h, m, s);
     }
 }
-
-
-
-        /*for(int j = 1; j <= L; ++j) {
-            psi.position(j);
-            n(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N",j)*psi.A(j));
-            n2(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N2",j)*psi.A(j));
-            for(int k = 1; k <= L; ++k) {
-                C(j, k) = psiHphi(psi,COp[j-1][k-1],psi);
-            }
-        }
-
-
-        time_point<system_clock> end = system_clock::now();
-        //seconds runtime = duration_cast<seconds>(end - start);
-        //res.runtime = runtime.count();
-        runtime = seconds_to_string(duration_cast<seconds>(end - start).count());*/
 
 
 vector<Real> linspace(Real min, Real max, int n)
@@ -203,7 +192,7 @@ int main(int argc, char **argv)
             links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
         }
 
-        /*for(int i = 1; i <= L; ++i) {
+        for(int i = 1; i <= L; ++i) {
             vector<IQMPO> Ci;
             for(int j = 1; j <= L; ++j) {
                 IQMPO Cij(sites);
@@ -227,7 +216,7 @@ int main(int argc, char **argv)
                 Ci.push_back(Cij);
             }
             COp.push_back(Ci);
-        }*/
+        }
 
     } catch(ITError e) {
         cerr << "ITensor error: " << e.what() << endl;
@@ -248,7 +237,6 @@ int main(int argc, char **argv)
         write(os, errgoal);
         write(os, quiet);
     });
-    cout << "Pool created" << endl;
     
     concurrent_queue<Results> resq;
 
@@ -265,66 +253,29 @@ int main(int argc, char **argv)
                 write(os, N);
                 
                 Results res;
-                res.psi0 = IQMPS(sites);
-                read(is, res.psi0);
+                
+                res.ix = ix;
+                res.iN = iN;
+                res.xs = xs;
+                res.Us = Us;
+                res.mus = mus;
+                
+                string psi0;
+                int len;
+                read(is, len);
+                vector<char> buf(len);
+                is.read(buf.data(), len);
+                psi0.append(buf.data(), len);
+                res.psi0 = psi0;
+                
                 read(is, res.E0);
                 read(is, res.Ei);
                 read(is, res.runtime);
-                cout << res.E0 << endl << res.runtime << endl;
+                
                 resq->push(res);
  }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
-            //tres[it][iN] = ts;
-            //Ures[it][iN] = Us;
-            //mures[it][iN] = mus;
-            //pool.enqueue(bind(groundstate, ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
         }
     }
-    
-    /*ThreadPool pool(numthreads);
-    concurrent_queue<Results> resq;
-    concurrent_queue<int> q;
-
-    vector<Real> Us(L, 1);
-    vector<Real> mus(L, 0);
-
-    multi_array<vector<Real>, 2> tres(extents[nt][nN]);
-    multi_array<vector<Real>, 2> Ures(extents[nt][nN]);
-    multi_array<vector<Real>, 2> mures(extents[nt][nN]);
-    multi_array<Real, 2> E0res(extents[nt][nN]);
-    multi_array<vector<Real>, 2> Eires(extents[nt][nN]);
-    multi_array<Vector, 2> nres(extents[nt][nN]);
-    multi_array<Vector, 2> n2res(extents[nt][nN]);
-    multi_array<Matrix, 2> Cres(extents[nt][nN]);
-    multi_array<string, 2> runtimei(extents[nt][nN]);
-
-    for(int it = 0; it < nt; ++it) {
-        for(int iN = 0; iN < nN; ++iN) {
-            tres[it][iN] = vector<Real>(L, NAN);
-            Ures[it][iN] = vector<Real>(L, NAN);
-            mures[it][iN] = vector<Real>(L, NAN);
-            E0res[it][iN] = NAN;
-            Eires[it][iN] = vector<Real>(1, NAN);
-            nres[it][iN] = Vector(L);
-            nres[it][iN] = NAN;
-            n2res[it][iN] = Vector(L);
-            n2res[it][iN] = NAN;
-            Cres[it][iN] = Matrix(L, L);
-            for(int i = 1; i <= L; ++i) {
-                Cres[it][iN].Row(i) = NAN;
-            }
-            runtimei[it][iN] = "unfinished";
-        }
-    }
-    
-    for(int it = 0; it < nt; ++it) {
-        for(int iN = 0; iN < nN; ++iN) {
-            vector<Real> ts(L, tv[it]);
-            tres[it][iN] = ts;
-            Ures[it][iN] = Us;
-            mures[it][iN] = mus;
-            pool.enqueue(bind(groundstate, ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
-        }
-    }*/
     
 #ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
@@ -354,60 +305,69 @@ int main(int argc, char **argv)
 
     int count = 0;
 
-    //Results res;
-    /*multi_array<vector<Real>, 2> tres(extents[nt][nN]);
-    multi_array<vector<Real>, 2> Ures(extents[nt][nN]);
-    multi_array<vector<Real>, 2> mures(extents[nt][nN]);
-    multi_array<Real, 2> E0res(extents[nt][nN]);
-    multi_array<vector<Real>, 2> Eires(extents[nt][nN]);
-    multi_array<Vector, 2> nres(extents[nt][nN]);
-    multi_array<Vector, 2> n2res(extents[nt][nN]);
-    multi_array<Matrix, 2> Cres(extents[nt][nN]);
-    multi_array<string, 2> runtimei(extents[nt][nN]);*/
+    multi_array<vector<Real>, 2> xres(extents[nx][nN]);
+    multi_array<vector<Real>, 2> Ures(extents[nx][nN]);
+    multi_array<vector<Real>, 2> mures(extents[nx][nN]);
+    multi_array<Real, 2> E0res(extents[nx][nN]);
+    multi_array<vector<Real>, 2> Eires(extents[nx][nN]);
+    multi_array<Vector, 2> nres(extents[nx][nN]);
+    multi_array<Vector, 2> n2res(extents[nx][nN]);
+    multi_array<Matrix, 2> Cres(extents[nx][nN]);
+    multi_array<string, 2> runtimei(extents[nx][nN]);
     
-    /*for(int it = 0; it < nt; ++it) {
+    for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
-            tres[it][iN] = vector<Real>(L, NAN);
-            Ures[it][iN] = vector<Real>(L, NAN);
-            mures[it][iN] = vector<Real>(L, NAN);
-            E0res[it][iN] = NAN;
-            Eires[it][iN] = vector<Real>(1, NAN);
-            nres[it][iN] = Vector(L);
-            nres[it][iN] = NAN;
-            n2res[it][iN] = Vector(L);
-            n2res[it][iN] = NAN;
-            Cres[it][iN] = Matrix(L, L);
+            xres[ix][iN] = vector<Real>(L, NAN);
+            Ures[ix][iN] = vector<Real>(L, NAN);
+            mures[ix][iN] = vector<Real>(L, NAN);
+            E0res[ix][iN] = NAN;
+            Eires[ix][iN] = vector<Real>(1, NAN);
+            nres[ix][iN] = Vector(L);
+            nres[ix][iN] = NAN;
+            n2res[ix][iN] = Vector(L);
+            n2res[ix][iN] = NAN;
+            Cres[ix][iN] = Matrix(L, L);
             for(int i = 1; i <= L; ++i) {
-                Cres[it][iN].Row(i) = NAN;
+                Cres[ix][iN].Row(i) = NAN;
             }
-            runtimei[it][iN] = "unfinished";
+            runtimei[ix][iN] = "unfinished";
         }
-    }*/
+    }
     
-    int qi;
+    Results res;
     while(!interrupted && count++ < nx*nN) {
-        //q.wait_and_pop(qi);
-        //resq.wait_and_pop(res);
-        /*int it = res.it;
+        resq.wait_and_pop(res);
+        int ix = res.ix;
         int iN = res.iN;
-        tres[it][iN] = res.ts;
-        Ures[it][iN] = res.Us;
-        mures[it][iN] = res.mus;
-        E0res[it][iN] = res.E0;
-        Eires[it][iN] = res.Ei;
-        nres[it][iN] = res.n;
-        n2res[it][iN] = res.n2;
-        Cres[it][iN] = res.C;
-        runtimei[it][iN] = seconds_to_string(res.runtime);*/
+        xres[ix][iN] = res.xs;
+        Ures[ix][iN] = res.Us;
+        mures[ix][iN] = res.mus;
+        E0res[ix][iN] = res.E0;
+        Eires[ix][iN] = res.Ei;
+        
+        stringstream ss(res.psi0, std::ios_base::in);
+        IQMPS psi0(sites);
+        psi0.read(ss);
+        for(int j = 1; j <= L; ++j) {
+            psi0.position(j);
+            nres[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N",j)*psi0.A(j));
+            n2res[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N2",j)*psi0.A(j));
+            for(int k = 1; k <= L; ++k) {
+                Cres[ix][iN](j, k) = psiHphi(psi0,COp[j-1][k-1],psi0);
+            }
+        }
+        
+        runtimei[ix][iN] = seconds_to_string(res.runtime);
+        
         zmq::message_t message(sizeof(int));
         ((int*)message.data())[0] = 1;
         socket.send(message);
     }
     
-    //pool.interrupt();
+    pool.interrupt();
     terminate(c);
 
-    /*printMath(os, "tres", resi, tres);
+    printMath(os, "tres", resi, xres);
     printMath(os, "Ures", resi, Ures);
     printMath(os, "mures", resi, mures);
     printMath(os, "E0res", resi, E0res);
@@ -419,7 +379,7 @@ int main(int argc, char **argv)
 
     time_point<system_clock> end = system_clock::now();
     string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
-    printMath(os, "runtime", resi, runtime);*/
+    printMath(os, "runtime", resi, runtime);
 	
     exit(0);
 	

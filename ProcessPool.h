@@ -38,12 +38,8 @@ public:
     ~ProcessPool();
 private:
     vector<child> children;
-    vector<ostream> oss;
-    vector<istream> iss;
-    //vector<file_descriptor_sink> ofds;
-    //vector<file_descriptor_source> ifds;
-    //vector<outfd> ofds;
-    //vector<infd> ifds;
+    //vector<ostream> oss;
+    //vector<istream> iss;
     vector<int> ofds;
     vector<int> ifds;
     // need to keep track of threads so we can join them
@@ -73,19 +69,8 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
         file_descriptor_sink outsink(pout.sink, never_close_handle);
         file_descriptor_source outsource(pout.source, never_close_handle);
         
-        
-        cout << "Sink: " << pin.sink << endl << "Source: " << pout.source << endl;
-        
         stream<file_descriptor_sink> os(insink);
-        //oss.push_back(os);
-        //oss.emplace_back(insink);
-        
         stream<file_descriptor_source> is(outsource);
-        //iss.push_back(is);
-        //iss.emplace_back(outsource);
-        
-        //ofds.push_back(insink);
-        //ifds.push_back(outsource);
         
         ofds.push_back(pin.sink);
         ifds.push_back(pout.source);
@@ -107,11 +92,9 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
                     callback task(this->tasks.front());
                     this->tasks.pop();
                     lock.unlock();
-                    //task(this->oss[i], this->iss[i]);
                     stream<outfd> os(outfd(this->ofds[i], never_close_handle));
                     stream<infd> is(infd(this->ifds[i], never_close_handle));
                     task(os, is);
-                    //task(this->ofds[i], this->ifds[])
                 }
             }
         );
