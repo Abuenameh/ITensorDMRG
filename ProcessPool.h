@@ -20,9 +20,13 @@ using namespace boost::iostreams;
 using namespace boost::process;
 using namespace boost::process::initializers;
 
+typedef file_descriptor_sink outfd;
+typedef file_descriptor_source infd;
+//typedef function<void(outfd&, infd&)> callback;
+
 typedef function<void(ostream&, istream&)> callback;
-typedef stream<file_descriptor_sink> postream;
-typedef stream<file_descriptor_source> pistream;
+//typedef stream<file_descriptor_sink> postream;
+//typedef stream<file_descriptor_source> pistream;
 
 class ProcessPool {
 public:
@@ -36,6 +40,12 @@ private:
     vector<child> children;
     vector<ostream> oss;
     vector<istream> iss;
+    //vector<file_descriptor_sink> ofds;
+    //vector<file_descriptor_source> ifds;
+    //vector<outfd> ofds;
+    //vector<infd> ifds;
+    vector<int> ofds;
+    vector<int> ifds;
     // need to keep track of threads so we can join them
     vector<thread> workers;
     // the task queue
@@ -53,9 +63,7 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
 {
     vector< string > args;
     args.push_back(prog);
-//    args.push_back("");
     for(size_t i = 0;i<processes;++i) {
-//        args[1] = to_string(port + 2*i);
         
         boost::process::pipe pin = create_pipe();
         file_descriptor_sink insink(pin.sink, never_close_handle);
@@ -65,6 +73,9 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
         file_descriptor_sink outsink(pout.sink, never_close_handle);
         file_descriptor_source outsource(pout.source, never_close_handle);
         
+        
+        cout << "Sink: " << pin.sink << endl << "Source: " << pout.source << endl;
+        
         stream<file_descriptor_sink> os(insink);
         //oss.push_back(os);
         //oss.emplace_back(insink);
@@ -73,15 +84,18 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
         //iss.push_back(is);
         //iss.emplace_back(outsource);
         
+        //ofds.push_back(insink);
+        //ifds.push_back(outsource);
+        
+        ofds.push_back(pin.sink);
+        ifds.push_back(pout.source);
+        
         children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink)));
         
-        //init(oss.back(), iss.back());
         init(os, is);
         
-        wait_for_exit(children.back());
-        
         workers.emplace_back(
-            [this,i,&os,&is]
+            [this,i]
             {
                 for(;;)
                 {
@@ -94,7 +108,10 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
                     this->tasks.pop();
                     lock.unlock();
                     //task(this->oss[i], this->iss[i]);
+                    stream<outfd> os(outfd(this->ofds[i], never_close_handle));
+                    stream<infd> is(infd(this->ifds[i], never_close_handle));
                     task(os, is);
+                    //task(this->ofds[i], this->ifds[])
                 }
             }
         );
@@ -105,16 +122,13 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
 template<class F, class... Args>
 auto ProcessPool::enqueue(F&& f, Args&&... args) 
     -> future<typename result_of<F(ostream&, istream&, Args...)>::type>
-//future<void> ProcessPool::enqueue(F&& f, Args&&... args) 
 {
     typedef typename result_of<F(ostream&, istream&, Args...)>::type return_type;
-    //typedef void return_type;
     
     // don't allow enqueueing after stopping the pool
     if(stop)
         throw runtime_error("enqueue on stopped ProcessPool");
 
-    //auto task = make_shared< packaged_task<void(ostream&, istream&)> >(
     auto task = std::make_shared< std::packaged_task<return_type(ostream&, istream&)> >(
             bind(forward<F>(f), placeholders::_1, placeholders::_2, forward<Args>(args)...)
         );

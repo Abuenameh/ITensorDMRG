@@ -67,12 +67,12 @@ int main(int argc, char **argv)
         read(cin, niter);
         read(cin, cutoff);
         read(cin, noise);
-        for(int sw = 0; sw < nsweeps; sw++) {
-            sweeps.setminm(sw, minm[sw]);
-            sweeps.setmaxm(sw, maxm[sw]);
-            sweeps.setniter(sw, niter[sw]);
-            sweeps.setcutoff(sw, cutoff[sw]);
-            sweeps.setnoise(sw, noise[sw]);
+        for(int sw = 1; sw <= nsweeps; sw++) {
+            sweeps.setminm(sw, minm[sw-1]);
+            sweeps.setmaxm(sw, maxm[sw-1]);
+            sweeps.setniter(sw, niter[sw-1]);
+            sweeps.setcutoff(sw, cutoff[sw-1]);
+            sweeps.setnoise(sw, noise[sw-1]);
         }
 
         Real errgoal;
@@ -81,17 +81,17 @@ int main(int argc, char **argv)
         bool quiet;
         read(cin, quiet);
         
-        bool stop = false;
-
-    while(true) {
         
+        bool stop = false;
+        
+    while(true) {
         
         vector<Real> Js(L), Us(L), mus(L);
 
         read(cin, Js);
         read(cin, Us);
         read(cin, mus);
-        
+
         int N;
         read(cin, N);
         
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             BH.mu(mus);
 
             IQMPO H = BH;
-
+            
             InitState initState(sites);
             int n0 = N / L;
             for(int i = 1; i <= L; ++i) {
@@ -120,15 +120,17 @@ int main(int argc, char **argv)
             }
             IQMPS psi(initState);
 
-            cout << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
-
+            cerr << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
+            
             BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
+            cerr << "Created observer" << endl;
 
             E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
+            cerr << "Did DMRG" << endl;
 
             psi0 = psi;
 
-            cout << format("\nGround State Energy = %.10f",E0) << endl;
+            cerr << format("\nGround State Energy = %.10f",E0) << endl;
 
             Ei = observer.getEnergies();
 

@@ -156,12 +156,12 @@ int main(int argc, char **argv)
     vector<Real> cutoff(nsweeps);
     vector<int> niter(nsweeps);
     vector<Real> noise(nsweeps);
-    for(int sw = 0; sw < nsweeps; ++sw) {
-        minm[sw] = sweeps.minm(sw);
-        maxm[sw] = sweeps.maxm(sw);
-        cutoff[sw] = sweeps.cutoff(sw);
-        niter[sw] = sweeps.niter(sw);
-        noise[sw] = sweeps.noise(sw);
+    for(int sw = 1; sw <= nsweeps; ++sw) {
+        minm[sw-1] = sweeps.minm(sw);
+        maxm[sw-1] = sweeps.maxm(sw);
+        cutoff[sw-1] = sweeps.cutoff(sw);
+        niter[sw-1] = sweeps.niter(sw);
+        noise[sw-1] = sweeps.noise(sw);
     }
 
 #ifdef MACOSX
@@ -258,17 +258,28 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([](ostream& os, istream& is) { cout << "Callback"; });
-            /*pool.enqueue(std::bind([] (concurrent_queue<Results>& resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N, ostream& os, istream& is) {
+            pool.enqueue([&](ostream& os, istream& is, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) { 
+                write(os, xs);
+                write(os, Us);
+                write(os, mus);
+                write(os, N);
                 
-            }, ref(resq), ix, iN, xs, Us, mus, Nv[iN], std::placeholders::_1, std::placeholders::_2));*/
+                Results res;
+                res.psi0 = IQMPS(sites);
+                read(is, res.psi0);
+                read(is, res.E0);
+                read(is, res.Ei);
+                read(is, res.runtime);
+                cout << res.E0 << endl << res.runtime << endl;
+                resq->push(res);
+ }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
             //tres[it][iN] = ts;
             //Ures[it][iN] = Us;
             //mures[it][iN] = mus;
             //pool.enqueue(bind(groundstate, ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
         }
     }
-
+    
     /*ThreadPool pool(numthreads);
     concurrent_queue<Results> resq;
     concurrent_queue<int> q;
