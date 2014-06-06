@@ -8,11 +8,12 @@
 #include <boost/multi_array.hpp>
 #include <boost/process.hpp>
 
-#include "zmq.hpp"
+#include <zmq.hpp>
 
 #include "concurrent_queue.h"
 #include "ThreadPool.h"
 #include "mathematica.h"
+#include "ProcessPool.h"
 
 #include "BoseHubbardSiteSet.h"
 #include "BoseHubbardHamiltonian.h"
@@ -45,20 +46,6 @@ using namespace boost::process::initializers;
 
 using namespace itensor;
 
-struct Results {
-    int it;
-    int iN;
-    vector<Real> ts;
-    vector<Real> Us;
-    vector<Real> mus;
-    Real E0;
-    vector<Real> Ei;
-    Vector& n;
-    Vector& n2;
-    Matrix& C;
-    int runtime;
-};
-
 string seconds_to_string(int s)
 {
     int m = s / 60;
@@ -76,60 +63,9 @@ string seconds_to_string(int s)
     }
 }
 
-void groundstate(/*concurrent_queue<Results>& resq,*/concurrent_queue<int>& q, Sweeps& sweeps, Real errgoal, bool quiet, BoseHubbardSiteSet& sites, vector<vector<IQMPO> >& COp, int it, int iN, vector<Real> ts, vector<Real> Us, vector<Real> mus, int N, Real& E0, vector<Real>& Ei, Vector& n, Vector& n2, Matrix& C, string& runtime)
-{
-    /*Results res;
-    res.it = it;
-    res.iN = iN;
-    res.ts = ts;
-    res.Us = Us;
-    res.mus = mus;*/
 
-    int L = sites.N();
 
-    //Vector n(L), n2(L);
-    //Matrix C(L, L);
-
-        time_point<system_clock> start = system_clock::now();
-
-    try {
-
-        BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
-        BH.t(ts);
-        BH.U(Us);
-        BH.mu(mus);
-
-        IQMPO H = BH;
-
-        InitState initState(sites);
-        int n0 = N / L;
-        for(int i = 1; i <= L; ++i) {
-            if(i <= N % L)
-                initState.set(i,std::to_string(n0+1));
-            else
-                initState.set(i,std::to_string(n0));
-        }
-        IQMPS psi(initState);
-
-        cout << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
-
-        BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
-
-        /*Real*/ E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
-
-        cout << format("\nGround State Energy = %.10f",E0) << endl;
-
-        /*vector<Real>*/ Ei = observer.getEnergies();
-        
-        /*ofstream psif("/Users/Abuenameh/Documents/Temp/psi.dat");
-        psi.write(psif);
-        psif.close();
-
-        ofstream sitesf("/Users/Abuenameh/Documents/Temp/sites.dat");
-        sites.write(sitesf);
-        sitesf.close();*/
-
-        for(int j = 1; j <= L; ++j) {
+        /*for(int j = 1; j <= L; ++j) {
             psi.position(j);
             n(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N",j)*psi.A(j));
             n2(j) = Dot(conj(primed(psi.A(j),Site)),sites.op("N2",j)*psi.A(j));
@@ -138,31 +74,12 @@ void groundstate(/*concurrent_queue<Results>& resq,*/concurrent_queue<int>& q, S
             }
         }
 
-        /*res.E0 = E0;
-        res.Ei = Ei;*/
-    } catch(...) {
-        /*res.E0 = NAN;
-        res.Ei = vector<Real>(1, NAN);*/
-        /*n = NAN;
-        n2 = NAN;
-        for(int i = 1; i <= L; ++i) {
-            C.Row(i) = NAN;
-        }*/
-    }
 
         time_point<system_clock> end = system_clock::now();
         //seconds runtime = duration_cast<seconds>(end - start);
         //res.runtime = runtime.count();
-        runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
+        runtime = seconds_to_string(duration_cast<seconds>(end - start).count());*/
 
-    /*res.n = n;
-    res.n2 = n2;
-    res.C = C;*/
-
-    //resq.push(res);
-    
-    q.push(1);
-}
 
 vector<Real> linspace(Real min, Real max, int n)
 {
@@ -274,7 +191,7 @@ int main(int argc, char **argv)
             links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
         }
 
-        for(int i = 1; i <= L; ++i) {
+        /*for(int i = 1; i <= L; ++i) {
             vector<IQMPO> Ci;
             for(int j = 1; j <= L; ++j) {
                 IQMPO Cij(sites);
@@ -298,7 +215,7 @@ int main(int argc, char **argv)
                 Ci.push_back(Cij);
             }
             COp.push_back(Ci);
-        }
+        }*/
 
     } catch(ITError e) {
         cerr << "ITensor error: " << e.what() << endl;
@@ -307,8 +224,17 @@ int main(int argc, char **argv)
         cerr << "Unknown error" << endl;
         return 1;
     }
+    
+    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&sites] (socket_t& out, socket_t& in, ostream& os) {
+        cout << "Init called" << endl;
+        stringstream ss(stringstream::in | stringstream::out | stringstream::binary);
+        sites.write(ss);
+        //out.send(ss.str().data(), ss.str().size());
+        sites.write(os);
+        cout << "Init finished" << endl;
+    });
 
-    ThreadPool pool(numthreads);
+    /*ThreadPool pool(numthreads);
     concurrent_queue<Results> resq;
     concurrent_queue<int> q;
 
@@ -350,9 +276,9 @@ int main(int argc, char **argv)
             tres[it][iN] = ts;
             Ures[it][iN] = Us;
             mures[it][iN] = mus;
-            pool.enqueue(bind(groundstate, /*ref(resq),*/ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
+            pool.enqueue(bind(groundstate, ref(q), ref(sweeps), errgoal, quiet, ref(sites), ref(COp), it, iN, ts, Us, mus, Nv[iN], ref(E0res[it][iN]), ref(Eires[it][iN]), ref(nres[it][iN]), ref(n2res[it][iN]), ref(Cres[it][iN]), ref(runtimei[it][iN])));
         }
-    }
+    }*/
     
 #ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
@@ -414,7 +340,7 @@ int main(int argc, char **argv)
     
     int qi;
     while(!interrupted && count++ < nt*nN) {
-        q.wait_and_pop(qi);
+        //q.wait_and_pop(qi);
         //resq.wait_and_pop(res);
         /*int it = res.it;
         int iN = res.iN;
@@ -432,10 +358,10 @@ int main(int argc, char **argv)
         socket.send(message);
     }
     
-    pool.interrupt();
+    //pool.interrupt();
     terminate(c);
 
-    printMath(os, "tres", resi, tres);
+    /*printMath(os, "tres", resi, tres);
     printMath(os, "Ures", resi, Ures);
     printMath(os, "mures", resi, mures);
     printMath(os, "E0res", resi, E0res);
@@ -447,7 +373,7 @@ int main(int argc, char **argv)
 
     time_point<system_clock> end = system_clock::now();
     string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
-    printMath(os, "runtime", resi, runtime);
+    printMath(os, "runtime", resi, runtime);*/
 	
     exit(0);
 	

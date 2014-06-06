@@ -17,18 +17,18 @@ public:
                            const OptSet& opts = Global::opts());
 
     std::vector<Real>
-    t() const {
-        return t_;
+    J() const {
+        return J_;
     }
     void
-    t(Real val) {
+    J(Real val) {
         initted_ = false;
-        t_.assign(sites_.N(),val);
+        J_.assign(sites_.N(),val);
     }
     void
-    t(std::vector<Real> val) {
+    J(std::vector<Real> val) {
         initted_ = false;
-        t_ = val;
+        J_ = val;
     }
 
     std::vector<Real>
@@ -79,7 +79,7 @@ private:
 
     const BoseHubbardSiteSet& sites_;
     bool initted_;
-    std::vector<Real> t_,U_,mu_;
+    std::vector<Real> J_,U_,mu_;
     IQMPO H;
 
     //
@@ -119,16 +119,16 @@ BoseHubbardHamiltonian(const BoseHubbardSiteSet& sites,
     :
     sites_(sites),
     initted_(false),
-    t_(sites.N()),
+    J_(sites.N()),
     U_(sites.N()),
     mu_(sites.N())
 {
     const int Ns = sites_.N();
 
-    std::string tstr = opts.getString("t", "1");
-    std::vector<std::string> tstrs = split(tstr, ',');
-    tstrs.resize(Ns, tstrs.back());
-    std::transform(tstrs.begin(), tstrs.end(), t_.begin(), stringtodouble);
+    std::string Jstr = opts.getString("J", "1");
+    std::vector<std::string> Jstrs = split(Jstr, ',');
+    Jstrs.resize(Ns, Jstrs.back());
+    std::transform(Jstrs.begin(), Jstrs.end(), J_.begin(), stringtodouble);
 
     std::string Ustr = opts.getString("U", "1");
     std::vector<std::string> Ustrs = split(Ustr, ',');
@@ -173,8 +173,8 @@ init_()
         W += sites_.op("Id",n) * row(k) * col(k);
 
         //Hopping terms -t*(b^d_i b_{i+1} + b_i b^d_{i+1})
-        W += sites_.op("Bdag",n) * row(1) * col(2) * (-t_[n-1]);
-        W += sites_.op("B",n) * row(1) * col(3) * (-t_[n-1]);
+        W += sites_.op("Bdag",n) * row(1) * col(2) * (-J_[n-1]);
+        W += sites_.op("B",n) * row(1) * col(3) * (-J_[n-1]);
         W += sites_.op("B",n) * row(2) * col(k);
         W += sites_.op("Bdag",n) * row(3) * col(k);
 
