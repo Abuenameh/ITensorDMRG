@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 20;
+    int L = 50;
     int nmax = 7;
 
     int nsweeps = 5;
@@ -225,8 +225,14 @@ int main(int argc, char **argv)
         cerr << "Unknown error" << endl;
         return 1;
     }
-    
-    ProcessPool pool(numthreads, "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate", [&] (ostream& os, istream& is) {
+
+#ifdef MACOSX
+    string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
+#endif
+#ifdef AMAZON_EC2
+    string groundstate = "/home/ubuntu/ITensorDMRG/GroundState/Release/GroundState";
+#endif
+    ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is) {
         write(os, sites);
         write(os, nsweeps);
         write(os, minm);
