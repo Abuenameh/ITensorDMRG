@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     int L = 50;
     int nmax = 7;
 
-    int nsweeps = 5;
+    int nsweeps = 15;
     Real errgoal = -1;
     bool quiet = true;
 
@@ -242,7 +242,7 @@ int main(int argc, char **argv)
 
     child c = execute(set_args(args), inherit_env());
 
-    zmq::context_t context;
+    zmq::context_t context(1);
     zmq::socket_t socket(context, ZMQ_PUSH);
 
     socket.connect("tcp://localhost:5556");
