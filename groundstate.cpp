@@ -52,26 +52,17 @@ int main(int argc, char **argv)
     BoseHubbardSiteSet sites;
     read(cin, sites);
     const int L = sites.N();
-    //const int nmax = sites.nmax();
-    
-    int test;
-    //read(cin, test);
-    //cerr << "Test = " << test << endl;
-    
-    IQMPS m(sites);
-    //read(cin, m);
-    //cerr << m << endl;
-    //exit(0);
-    
-    IQMPO b(sites);
-    read(cin, b);
-    cerr << b << endl;
-    vector<IQMPO> bs(L, IQMPO(sites));
-    /*for(int i = 0; i < L; i++) {
-        bs.emplace_back(sites);
-    }*/
-    //read(cin, bs);
-    //cerr << bs[1] << endl;
+
+    vector<IQTensor> ns, n2s;
+    vector<IQMPO> bs;
+    for(int i = 1; i <= L; i++) {
+        ns.push_back(sites.op("N", i));
+        n2s.push_back(sites.op("N2", i));
+
+        IQMPO bi = HamBuilder<IQTensor>(sites, "B", i);
+        bi.position(1);
+        bs.push_back(bi);
+    }
 
     int nsweeps;
     read(cin, nsweeps);
@@ -152,12 +143,38 @@ int main(int argc, char **argv)
         } catch(...) {
         }
 
+        vector<IQMPS> bpsi;
+        const bool exact = true;
+        for(int i = 0; i < L; ++i) {
+            IQMPS psi;
+            if(exact)
+                exactApplyMPO(psi0, bs[i], psi);
+            else
+                zipUpApplyMPO(psi0, bs[i], psi);
+            bpsi.push_back(psi);
+        }
+        
+        vector<Real> n(L), n2(L);
+        vector<vector<Real> > C(L, vector<Real>(L));
+        for(int i = 0; i < L; i++) {
+            psi0.position(i);
+            n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
+            n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
+            for(int j = 0; j <= i; j++) {
+                Real Cij = psiphi(bpsi[i], bpsi[j]);
+                C[i][j] = Cij;
+                C[j][i] = Cij;
+            }
+        }
+
         time_point<system_clock> end = system_clock::now();
         int runtime = duration_cast<seconds>(end - start).count();
 
-        write(cout, psi0);
         write(cout, E0);
         write(cout, Ei);
+        write(cout, n);
+        write(cout, n2);
+        write(cout, C);
         write(cout, runtime);
     }
 

@@ -53,8 +53,6 @@ struct Results {
     vector<Real> xs;
     vector<Real> Us;
     vector<Real> mus;
-    //IQMPS psi0;
-    string psi0;
     Real E0;
     vector<Real> Ei;
     vector<Real> n;
@@ -127,7 +125,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 20;
+    int L = 50;
     int nmax = 7;
 
     int nsweeps = 5;
@@ -176,84 +174,7 @@ int main(int argc, char **argv)
     printMath(os, "ts", resi, xv);
     printMath(os, "Ns", resi, Nv);
 
-    BoseHubbardSiteSet sites;
-
-    vector<vector<IQMPO> > COp;
-    vector<IQMPO> BOp;
-    
-    vector<IQMPO> bs;
-
-    try {
-
-        sites = BoseHubbardSiteSet(L, nmax);
-
-        vector<IQIndex> links(L+1);
-        for(int l = 0; l <= L; ++l) {
-            vector<IndexQN> indices;
-            for(int n = 0; n <= nmax; n++) {
-                indices.push_back(IndexQN(Index(nameint("n = ", n) + nameint(" for site ", l),1), QN(0,n,n%2)));
-            }
-            links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
-        }
-
-        for(int i = 1; i <= L; ++i) {
-            vector<IQMPO> Ci;
-            for(int j = 1; j <= L; ++j) {
-                IQMPO Cij(sites);
-                for(int n = 1; n <= L; ++n) {
-                    IQTensor& W = Cij.Anc(n);
-                    IQIndex row = dag(links[n-1]), col = links[n];
-
-                    W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
-
-                    if(i != j && (n == i || n == j)) {
-                        W += sites.op("Bdag",n) * row(1) * col(2);
-                        W += sites.op("B",n) * row(2) * col(4);
-                    } else {
-                        for(int k = 1; k <= 4; ++k) {
-                            W += sites.op("Id",n) * row(k) * col(k);
-                        }
-                    }
-                }
-                Cij.Anc(1) *= IQTensor(links.at(0)(1));
-                Cij.Anc(L) *= IQTensor(dag(links.at(L)(4)));
-                Ci.push_back(Cij);
-            }
-            IQMPO Bi = HamBuilder<IQTensor>(sites, "B", i);
-            Bi.position(1);
-            /*for(int n = 1; n <= L; ++n) {
-                IQTensor& W = Bi.Anc(n);
-                IQIndex row = dag(links[n-1]), col = links[n];
-
-                W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
-
-            W += sites.op("Id",n) * row(1) * col(1);
-            W += sites.op("Id",n) * row(2) * col(2);
-            W += sites.op("Id",n) * row(3) * col(3);
-            W += sites.op("Id",n) * row(4) * col(4);
-
-                if(n == i) {
-                    W += sites.op("B",n) * row(2) * col(4);
-                } else {
-                    for(int k = 1; k <= 4; ++k) {
-                        W += sites.op("Id",n) * row(k) * col(k);
-                    }
-                }
-            }
-            //Bi.Anc(1) *= IQTensor(links.at(0)(1));
-            //Bi.Anc(L) *= IQTensor(dag(links.at(L)(4)));*/
-            BOp.push_back(Bi);
-            COp.push_back(Ci);
-            bs.push_back(Bi);
-        }
-
-    } catch(ITError e) {
-        cerr << "ITensor error: " << e.what() << endl;
-        return 1;
-    } catch(...) {
-        cerr << "Unknown error" << endl;
-        return 1;
-    }
+    BoseHubbardSiteSet sites(L, nmax);
 
 #ifdef MACOSX
     string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
@@ -263,14 +184,6 @@ int main(int argc, char **argv)
 #endif
     ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is) {
         write(os, sites);
-        int test = 42;
-        //write(os, test);
-        IQMPS m(sites);
-        //write(os, m);
-        //cout << m << endl << endl << endl;
-        IQMPO b = bs[0];
-        write(os, b);
-        os.flush();
         write(os, nsweeps);
         write(os, minm);
         write(os, maxm);
@@ -302,14 +215,6 @@ int main(int argc, char **argv)
                 res.xs = xs;
                 res.Us = Us;
                 res.mus = mus;
-
-                string psi0;
-                int len;
-                read(is, len);
-                vector<char> buf(len);
-                is.read(buf.data(), len);
-                psi0.append(buf.data(), len);
-                res.psi0 = psi0;
 
                 read(is, res.E0);
                 read(is, res.Ei);
@@ -356,9 +261,9 @@ int main(int argc, char **argv)
     multi_array<vector<Real>, 2> mures(extents[nx][nN]);
     multi_array<Real, 2> E0res(extents[nx][nN]);
     multi_array<vector<Real>, 2> Eires(extents[nx][nN]);
-    multi_array<Vector, 2> nres(extents[nx][nN]);
-    multi_array<Vector, 2> n2res(extents[nx][nN]);
-    multi_array<Matrix, 2> Cres(extents[nx][nN]);
+    multi_array<vector<Real>, 2> nres(extents[nx][nN]);
+    multi_array<vector<Real>, 2> n2res(extents[nx][nN]);
+    multi_array<vector<vector<Real> >, 2> Cres(extents[nx][nN]);
     multi_array<string, 2> runtimei(extents[nx][nN]);
 
     for(int ix = 0; ix < nx; ++ix) {
@@ -368,14 +273,9 @@ int main(int argc, char **argv)
             mures[ix][iN] = vector<Real>(L, NAN);
             E0res[ix][iN] = NAN;
             Eires[ix][iN] = vector<Real>(1, NAN);
-            nres[ix][iN] = Vector(L);
-            nres[ix][iN] = NAN;
-            n2res[ix][iN] = Vector(L);
-            n2res[ix][iN] = NAN;
-            Cres[ix][iN] = Matrix(L, L);
-            for(int i = 1; i <= L; ++i) {
-                Cres[ix][iN].Row(i) = NAN;
-            }
+            nres[ix][iN].assign(L, NAN);
+            n2res[ix][iN].assign(L, NAN);
+            Cres[ix][iN].assign(L, vector<Real>(L, NAN));
             runtimei[ix][iN] = "unfinished";
         }
     }
@@ -390,76 +290,10 @@ int main(int argc, char **argv)
         mures[ix][iN] = res.mus;
         E0res[ix][iN] = res.E0;
         Eires[ix][iN] = res.Ei;
-
-        stringstream ss(res.psi0, std::ios_base::in);
-        IQMPS psi0(sites);
-        psi0.read(ss);
-        bool old = false;
-        bool exact = true;
-        vector<IQMPS> Bpsi;
-        psi0.position(1);
-        time_point<system_clock> startapply = system_clock::now();
-        if(!old) {
-            for(int j = 1; j <= L; ++j) {
-                IQMPS psi;
-                if(exact)
-                    exactApplyMPO(psi0, BOp[j-1], psi);
-                else
-                    zipUpApplyMPO(psi0, BOp[j-1], psi);
-                Bpsi.push_back(psi);
-            }
-        }
-        time_point<system_clock> endapply = system_clock::now();
-        //seconds runtime = duration_cast<seconds>(end - start);
-        //res.runtime = runtime.count();
-        //cout <<  seconds_to_string(duration_cast<seconds>(endapply - startapply).count()) << endl;
-        for(int j = 1; j <= L; ++j) {
-            psi0.position(j);
-            nres[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N",j)*psi0.A(j));
-            n2res[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N2",j)*psi0.A(j));
-            for(int k = 1; k <= L; ++k) {
-                if(old)
-                    Cres[ix][iN](j, k) = psiHphi(psi0,COp[j-1][k-1],psi0);
-                else {
-                    /*IQMPS psiL, psiR;
-                    if(exact) {
-                        exactApplyMPO(psi0, BOp[j-1], psiL);
-                        exactApplyMPO(psi0, BOp[k-1], psiR);
-
-                    } else {
-                        zipUpApplyMPO(psi0, BOp[j-1], psiL);
-                        zipUpApplyMPO(psi0, BOp[k-1], psiR);
-
-                    }
-                    Cres[ix][iN](j, k) = psiphi(psiL, psiR);*/
-                    Cres[ix][iN](j, k) = psiphi(Bpsi[j-1], Bpsi[k-1]);
-
-                }
-            }
-        }
-        /*HamBuilder<IQTensor> hb(sites, "B", 1);
-        IQMPO qwe = hb;//BOp[0];// = sites.op("B", 1);
-        //cout << qwe << endl;
-        qwe.position(1);
-        psi0.position(1);
-        IQMPS wer;// = qwe*psi0;
-        //zipUpApplyMPO(psi0,qwe,wer);
-        exactApplyMPO(psi0,qwe,wer);
-        //cout << wer << endl;
-
-        IQMPO asd = HamBuilder<IQTensor>(sites, "B", 2);//BOp[1];//sites.op("B", 2);
-        asd.position(1);
-        psi0.position(1);
-        IQMPS sdf;
-        //zipUpApplyMPO(psi0,asd,sdf);
-        exactApplyMPO(psi0,asd,sdf);
-
-        Real zxc = psiphi(wer,wer);
-        cout << "zxc = " << zxc << endl;
-        Real xcv = psiphi(wer,sdf);
-        cout << "xcv = " << xcv << endl;*/
-        //IQMPS dfg = conj(primed(sdf,Site));
-        //cout << dfg << endl;
+        
+        nres[ix][iN] = res.n;
+        n2res[ix][iN] = res.n2;
+        Cres[ix][iN] = res.C;
 
         runtimei[ix][iN] = seconds_to_string(res.runtime);
 

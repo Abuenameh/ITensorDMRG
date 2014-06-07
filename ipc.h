@@ -71,14 +71,11 @@ void read(std::istream& is, IQMPS& mps) {
 }
 
 void read(std::istream& is, IQMPO& mpo) {
-    cerr << "Reading MPO" << endl;
     mpo.read(is);
-    cerr << "Read MPO" << endl;
 }
 
 template<class T>
 void read(std::istream& is, T& t) {
-    cerr << "Reading" << endl;
     is.read(reinterpret_cast<char*>(&t), sizeof(T));
 }
 
