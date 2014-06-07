@@ -47,8 +47,7 @@ using namespace boost::process::initializers;
 
 using namespace itensor;
 
-struct Results
-{
+struct Results {
     int ix;
     int iN;
     vector<Real> xs;
@@ -58,6 +57,9 @@ struct Results
     string psi0;
     Real E0;
     vector<Real> Ei;
+    vector<Real> n;
+    vector<Real> n2;
+    vector<vector<Real> > C;
     int runtime;
 };
 
@@ -69,11 +71,10 @@ string seconds_to_string(int s)
     m = m % 60;
     int d = h / 24;
     h = h % 24;
-    
+
     if(d > 0) {
         return format("%d d %d:%02d:%02d", d, h, m, s);
-    }
-    else {
+    } else {
         return format("%d:%02d:%02d", h, m, s);
     }
 }
@@ -107,7 +108,7 @@ int main(int argc, char **argv)
     time_point<system_clock> start = system_clock::now();
 
     int resi = stoi(argv[1]);
-    
+
     double ximax = stod(argv[2]);
     int seed = stoi(argv[3]);
 
@@ -126,7 +127,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 50;
+    int L = 20;
     int nmax = 7;
 
     int nsweeps = 5;
@@ -139,7 +140,7 @@ int main(int argc, char **argv)
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 2;
     sweeps.noise() = 1E-7,1E-8,0.0;
-    
+
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
     vector<Real> cutoff(nsweeps);
@@ -161,7 +162,7 @@ int main(int argc, char **argv)
 #endif
     string resfile = format("%s/res.%d.txt", resdir, resi);
     ofstream os(resfile);
-    
+
     printMath(os, "seed", resi, seed);
     printMath(os, "ximax", resi, ximax);
     printMath(os, "L", resi, L);
@@ -174,10 +175,13 @@ int main(int argc, char **argv)
     printMath(os, "noise", resi, noise);
     printMath(os, "ts", resi, xv);
     printMath(os, "Ns", resi, Nv);
-    
+
     BoseHubbardSiteSet sites;
 
     vector<vector<IQMPO> > COp;
+    vector<IQMPO> BOp;
+    
+    vector<IQMPO> bs;
 
     try {
 
@@ -215,7 +219,32 @@ int main(int argc, char **argv)
                 Cij.Anc(L) *= IQTensor(dag(links.at(L)(4)));
                 Ci.push_back(Cij);
             }
+            IQMPO Bi = HamBuilder<IQTensor>(sites, "B", i);
+            Bi.position(1);
+            /*for(int n = 1; n <= L; ++n) {
+                IQTensor& W = Bi.Anc(n);
+                IQIndex row = dag(links[n-1]), col = links[n];
+
+                W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
+
+            W += sites.op("Id",n) * row(1) * col(1);
+            W += sites.op("Id",n) * row(2) * col(2);
+            W += sites.op("Id",n) * row(3) * col(3);
+            W += sites.op("Id",n) * row(4) * col(4);
+
+                if(n == i) {
+                    W += sites.op("B",n) * row(2) * col(4);
+                } else {
+                    for(int k = 1; k <= 4; ++k) {
+                        W += sites.op("Id",n) * row(k) * col(k);
+                    }
+                }
+            }
+            //Bi.Anc(1) *= IQTensor(links.at(0)(1));
+            //Bi.Anc(L) *= IQTensor(dag(links.at(L)(4)));*/
+            BOp.push_back(Bi);
             COp.push_back(Ci);
+            bs.push_back(Bi);
         }
 
     } catch(ITError e) {
@@ -234,6 +263,14 @@ int main(int argc, char **argv)
 #endif
     ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is) {
         write(os, sites);
+        int test = 42;
+        //write(os, test);
+        IQMPS m(sites);
+        //write(os, m);
+        //cout << m << endl << endl << endl;
+        IQMPO b = bs[0];
+        write(os, b);
+        os.flush();
         write(os, nsweeps);
         write(os, minm);
         write(os, maxm);
@@ -243,7 +280,7 @@ int main(int argc, char **argv)
         write(os, errgoal);
         write(os, quiet);
     });
-    
+
     concurrent_queue<Results> resq;
 
     vector<Real> Us(L, 1);
@@ -252,20 +289,20 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](ostream& os, istream& is, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) { 
+            pool.enqueue([&](ostream& os, istream& is, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
                 write(os, xs);
                 write(os, Us);
                 write(os, mus);
                 write(os, N);
-                
+
                 Results res;
-                
+
                 res.ix = ix;
                 res.iN = iN;
                 res.xs = xs;
                 res.Us = Us;
                 res.mus = mus;
-                
+
                 string psi0;
                 int len;
                 read(is, len);
@@ -273,16 +310,19 @@ int main(int argc, char **argv)
                 is.read(buf.data(), len);
                 psi0.append(buf.data(), len);
                 res.psi0 = psi0;
-                
+
                 read(is, res.E0);
                 read(is, res.Ei);
+                read(is, res.n);
+                read(is, res.n2);
+                read(is, res.C);
                 read(is, res.runtime);
-                
+
                 resq->push(res);
- }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
+            }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
     }
-    
+
 #ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
     string script = "/Users/Abuenameh/PycharmProjects/DMRG/ZMQProgressDialog.py";
@@ -294,12 +334,12 @@ int main(int argc, char **argv)
     vector<string> args;
     args.push_back(python);
     args.push_back(script);
-    
+
     child c = execute(set_args(args), inherit_env());
-    
-    zmq::context_t context(1);
+
+    zmq::context_t context;
     zmq::socket_t socket(context, ZMQ_PUSH);
-    
+
     socket.connect("tcp://localhost:5556");
     string len = to_string(nx*nN);
     zmq::message_t lenmessage(len.length());
@@ -320,7 +360,7 @@ int main(int argc, char **argv)
     multi_array<Vector, 2> n2res(extents[nx][nN]);
     multi_array<Matrix, 2> Cres(extents[nx][nN]);
     multi_array<string, 2> runtimei(extents[nx][nN]);
-    
+
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             xres[ix][iN] = vector<Real>(L, NAN);
@@ -339,7 +379,7 @@ int main(int argc, char **argv)
             runtimei[ix][iN] = "unfinished";
         }
     }
-    
+
     Results res;
     while(!interrupted && count++ < nx*nN) {
         resq.wait_and_pop(res);
@@ -350,26 +390,84 @@ int main(int argc, char **argv)
         mures[ix][iN] = res.mus;
         E0res[ix][iN] = res.E0;
         Eires[ix][iN] = res.Ei;
-        
+
         stringstream ss(res.psi0, std::ios_base::in);
         IQMPS psi0(sites);
         psi0.read(ss);
+        bool old = false;
+        bool exact = true;
+        vector<IQMPS> Bpsi;
+        psi0.position(1);
+        time_point<system_clock> startapply = system_clock::now();
+        if(!old) {
+            for(int j = 1; j <= L; ++j) {
+                IQMPS psi;
+                if(exact)
+                    exactApplyMPO(psi0, BOp[j-1], psi);
+                else
+                    zipUpApplyMPO(psi0, BOp[j-1], psi);
+                Bpsi.push_back(psi);
+            }
+        }
+        time_point<system_clock> endapply = system_clock::now();
+        //seconds runtime = duration_cast<seconds>(end - start);
+        //res.runtime = runtime.count();
+        //cout <<  seconds_to_string(duration_cast<seconds>(endapply - startapply).count()) << endl;
         for(int j = 1; j <= L; ++j) {
             psi0.position(j);
             nres[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N",j)*psi0.A(j));
             n2res[ix][iN](j) = Dot(conj(primed(psi0.A(j),Site)),sites.op("N2",j)*psi0.A(j));
             for(int k = 1; k <= L; ++k) {
-                Cres[ix][iN](j, k) = psiHphi(psi0,COp[j-1][k-1],psi0);
+                if(old)
+                    Cres[ix][iN](j, k) = psiHphi(psi0,COp[j-1][k-1],psi0);
+                else {
+                    /*IQMPS psiL, psiR;
+                    if(exact) {
+                        exactApplyMPO(psi0, BOp[j-1], psiL);
+                        exactApplyMPO(psi0, BOp[k-1], psiR);
+
+                    } else {
+                        zipUpApplyMPO(psi0, BOp[j-1], psiL);
+                        zipUpApplyMPO(psi0, BOp[k-1], psiR);
+
+                    }
+                    Cres[ix][iN](j, k) = psiphi(psiL, psiR);*/
+                    Cres[ix][iN](j, k) = psiphi(Bpsi[j-1], Bpsi[k-1]);
+
+                }
             }
         }
-        
+        /*HamBuilder<IQTensor> hb(sites, "B", 1);
+        IQMPO qwe = hb;//BOp[0];// = sites.op("B", 1);
+        //cout << qwe << endl;
+        qwe.position(1);
+        psi0.position(1);
+        IQMPS wer;// = qwe*psi0;
+        //zipUpApplyMPO(psi0,qwe,wer);
+        exactApplyMPO(psi0,qwe,wer);
+        //cout << wer << endl;
+
+        IQMPO asd = HamBuilder<IQTensor>(sites, "B", 2);//BOp[1];//sites.op("B", 2);
+        asd.position(1);
+        psi0.position(1);
+        IQMPS sdf;
+        //zipUpApplyMPO(psi0,asd,sdf);
+        exactApplyMPO(psi0,asd,sdf);
+
+        Real zxc = psiphi(wer,wer);
+        cout << "zxc = " << zxc << endl;
+        Real xcv = psiphi(wer,sdf);
+        cout << "xcv = " << xcv << endl;*/
+        //IQMPS dfg = conj(primed(sdf,Site));
+        //cout << dfg << endl;
+
         runtimei[ix][iN] = seconds_to_string(res.runtime);
-        
+
         zmq::message_t message(sizeof(int));
         ((int*)message.data())[0] = 1;
         socket.send(message);
     }
-    
+
     pool.interrupt();
     terminate(c);
 
@@ -386,8 +484,8 @@ int main(int argc, char **argv)
     time_point<system_clock> end = system_clock::now();
     string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
     printMath(os, "runtime", resi, runtime);
-	
+
     exit(0);
-	
+
     return 0;
 }

@@ -53,6 +53,25 @@ int main(int argc, char **argv)
     read(cin, sites);
     const int L = sites.N();
     //const int nmax = sites.nmax();
+    
+    int test;
+    //read(cin, test);
+    //cerr << "Test = " << test << endl;
+    
+    IQMPS m(sites);
+    //read(cin, m);
+    //cerr << m << endl;
+    //exit(0);
+    
+    IQMPO b(sites);
+    read(cin, b);
+    cerr << b << endl;
+    vector<IQMPO> bs(L, IQMPO(sites));
+    /*for(int i = 0; i < L; i++) {
+        bs.emplace_back(sites);
+    }*/
+    //read(cin, bs);
+    //cerr << bs[1] << endl;
 
     int nsweeps;
     read(cin, nsweeps);
