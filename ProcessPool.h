@@ -24,102 +24,246 @@ typedef file_descriptor_sink outfd;
 typedef file_descriptor_source infd;
 //typedef function<void(outfd&, infd&)> callback;
 
-typedef function<void(ostream&, istream&)> callback;
+typedef function<void(ostream&, istream&, istream&, bool&)> callback;
 //typedef stream<file_descriptor_sink> postream;
 //typedef stream<file_descriptor_source> pistream;
 
-class ProcessPool {
+class ProcessPool
+{
 public:
     ProcessPool(size_t, string, callback);
     template<class F, class... Args>
-    auto enqueue(F&& f, Args&&... args) 
-        -> future<typename result_of<F(ostream&, istream&, Args...)>::type>;
+    auto enqueue(F&& f, Args&&... args)
+    -> future<typename result_of<F(ostream&, istream&, istream&, bool&, Args...)>::type>;
+    void recreate_process(string prog, callback init, int i);
     void interrupt();
     ~ProcessPool();
 private:
     vector<child> children;
-    //vector<ostream> oss;
-    //vector<istream> iss;
     vector<int> ofds;
     vector<int> ifds;
     // need to keep track of threads so we can join them
     vector<thread> workers;
     // the task queue
     queue<callback> tasks;
-    
+
     // synchronization
     mutex queue_mutex;
     condition_variable condition;
     bool stop;
 };
- 
+
+/*void create_process()
+{
+        boost::process::pipe abortp = create_pipe();
+        int abortfd = abortp.source;
+        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
+        file_descriptor_source abortsource(abortp.source, never_close_handle);
+        stream<file_descriptor_sink> abortos(abortsink);
+        stream<file_descriptor_source> abortis(abortsource);
+
+        boost::process::pipe pin = create_pipe();
+        file_descriptor_sink insink(pin.sink, never_close_handle);
+        file_descriptor_source insource(pin.source, never_close_handle);
+
+        boost::process::pipe pout = create_pipe();
+        file_descriptor_sink outsink(pout.sink, never_close_handle);
+        file_descriptor_source outsource(pout.source, never_close_handle);
+
+        stream<file_descriptor_sink> os(insink);
+        stream<file_descriptor_source> is(outsource);
+
+        ofds.push_back(pin.sink);
+        ifds.push_back(pout.source);
+
+        args[1] = to_string(i);
+        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
+
+        init(os, is, abortis);
+
+        workers.emplace_back(
+        [this,i,abortfd] {
+            for(;;) {
+                unique_lock<mutex> lock(this->queue_mutex);
+                while(!this->stop && this->tasks.empty())
+                    this->condition.wait(lock);
+                if(this->stop || this->tasks.empty())
+                    return;
+                callback task(this->tasks.front());
+                this->tasks.pop();
+                lock.unlock();
+                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
+                stream<infd> is(infd(this->ifds[i], never_close_handle));
+                stream<infd> abortis(infd(abortfd, never_close_handle));
+                bool abort = task(os, is, abortis);
+                if(abort) {
+                    break;
+                }
+            }
+        }
+        );
+    
+}*/
+
+void ProcessPool::recreate_process(string prog, callback init, int i)
+{
+    vector< string > args;
+    args.push_back(prog);
+
+        boost::process::pipe abortpipe = create_pipe();
+        int abortfd = abortp.source;
+        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
+        //file_descriptor_abortsink = new file_descriptor_sink(abortp.sink);
+        file_descriptor_source abortsource(abortp.source, never_close_handle);
+        stream<file_descriptor_sink> abortos(abortsink);
+        stream<file_descriptor_source> abortis(abortsource);
+
+        boost::process::pipe outpipe = create_pipe();
+        file_descriptor_sink insink(outpipe.sink, never_close_handle);
+        file_descriptor_source insource(outpipe.source, never_close_handle);
+
+        boost::process::pipe inpipe = create_pipe();
+        file_descriptor_sink outsink(inpipe.sink, never_close_handle);
+        file_descriptor_source outsource(inpipe.source, never_close_handle);
+
+        stream<file_descriptor_sink> os(insink);
+        stream<file_descriptor_source> is(outsource);
+
+        ofds.push_back(pin.sink);
+        ifds.push_back(pout.source);
+
+        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
+
+bool abort;
+        init(os, is, abortis, abort);
+
+        cout << "Workers length (before): " << workers.size() << endl;
+//auto it = workers.emplace(workers.begin()+i,
+        workers.emplace_back(
+        [this,i,abortpipe,inpipe,outpipe,abortfd,init,prog] {
+            for(;;) {
+                unique_lock<mutex> lock(this->queue_mutex);
+                while(!this->stop && this->tasks.empty())
+                    this->condition.wait(lock);
+                if(this->stop || this->tasks.empty())
+                    return;
+                callback task(this->tasks.front());
+                this->tasks.pop();
+                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
+                stream<infd> is(infd(this->ifds[i], never_close_handle));
+                stream<infd> abortis(infd(abortfd, never_close_handle));
+                lock.unlock();
+                bool abort;// = task(os, is, abortis);
+                task(os, is, abortis, abort);
+                cout << "Abort: " << abort << endl;
+                if(abort) {
+                    cout << "Thread aborted." << endl;
+                    lock.lock();
+                    this->recreate_process(prog, init, i);
+                    lock.unlock();
+                    break;
+                }
+            }
+        }
+        );
+        workers.erase(it);
+        //workers.erase(it+1);
+        cout << "Workers length: " << workers.size() << endl;
+        //workers.erase(workers.begin()+i);
+    }
+
+
 // the constructor just launches some amount of workers
 inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
     :   stop(false)
 {
     vector< string > args;
     args.push_back(prog);
-    for(size_t i = 0;i<processes;++i) {
-        
+    args.push_back("0");
+
+    for(size_t i = 0; i<processes; ++i) {
+
+        boost::process::pipe abortp = create_pipe();
+        int abortfd = abortp.source;
+        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
+        //file_descriptor_abortsink = new file_descriptor_sink(abortp.sink);
+        file_descriptor_source abortsource(abortp.source, never_close_handle);
+        stream<file_descriptor_sink> abortos(abortsink);
+        stream<file_descriptor_source> abortis(abortsource);
+
         boost::process::pipe pin = create_pipe();
         file_descriptor_sink insink(pin.sink, never_close_handle);
         file_descriptor_source insource(pin.source, never_close_handle);
-        
+
         boost::process::pipe pout = create_pipe();
         file_descriptor_sink outsink(pout.sink, never_close_handle);
         file_descriptor_source outsource(pout.source, never_close_handle);
-        
+
         stream<file_descriptor_sink> os(insink);
         stream<file_descriptor_source> is(outsource);
-        
+
         ofds.push_back(pin.sink);
         ifds.push_back(pout.source);
-        
-        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink)));
-        
-        init(os, is);
-        
+
+        args[1] = to_string(i);
+        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
+
+        bool abort;
+        init(os, is, abortis, abort);
+
         workers.emplace_back(
-            [this,i]
-            {
-                for(;;)
-                {
-                    unique_lock<mutex> lock(this->queue_mutex);
-                    while(!this->stop && this->tasks.empty())
-                        this->condition.wait(lock);
-                    if(this->stop || this->tasks.empty())
-                        return;
-                    callback task(this->tasks.front());
-                    this->tasks.pop();
+        [this,i,abortfd,prog,init] {
+            for(;;) {
+                unique_lock<mutex> lock(this->queue_mutex);
+                while(!this->stop && this->tasks.empty())
+                    this->condition.wait(lock);
+                if(this->stop || this->tasks.empty())
+                    return;
+                callback task(this->tasks.front());
+                this->tasks.pop();
+                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
+                stream<infd> is(infd(this->ifds[i], never_close_handle));
+                stream<infd> abortis(infd(abortfd, never_close_handle));
+                lock.unlock();
+                cout << "About to do task" << endl;
+                bool abort;// = task(os, is, abortis);
+                task(os, is, abortis, abort);
+                cout << "Abort: " << abort << endl;
+                if(abort) {
+                    lock.lock();
+                    this->recreate_process(prog, init, i);
                     lock.unlock();
-                    stream<outfd> os(outfd(this->ofds[i], never_close_handle));
-                    stream<infd> is(infd(this->ifds[i], never_close_handle));
-                    task(os, is);
+                    break;
                 }
             }
+        }
         );
     }
 }
 
 // add new work item to the pool
 template<class F, class... Args>
-auto ProcessPool::enqueue(F&& f, Args&&... args) 
-    -> future<typename result_of<F(ostream&, istream&, Args...)>::type>
-{
-    typedef typename result_of<F(ostream&, istream&, Args...)>::type return_type;
-    
+auto ProcessPool::enqueue(F&& f, Args&&... args)
+-> future<typename result_of<F(ostream&, istream&, istream&, bool&, Args...)>::type> {
+    typedef typename result_of<F(ostream&, istream&, istream&, bool&, Args...)>::type return_type;
+
     // don't allow enqueueing after stopping the pool
     if(stop)
         throw runtime_error("enqueue on stopped ProcessPool");
 
-    auto task = std::make_shared< std::packaged_task<return_type(ostream&, istream&)> >(
-            bind(forward<F>(f), placeholders::_1, placeholders::_2, forward<Args>(args)...)
-        );
-        
+    auto task = std::make_shared< std::packaged_task<return_type(ostream&, istream&, istream&, bool&)> >(
+        bind(forward<F>(f), placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, forward<Args>(args)...)
+    );
+
     future<return_type> res = task->get_future();
     {
         unique_lock<mutex> lock(queue_mutex);
-        tasks.push([task](ostream& os, istream& is){ (*task)(os, is); });
+        tasks.push([task,&res](ostream& os, istream& is, istream& abortis, bool& abort) {
+            (*task)(os, is, abortis, abort);
+            //cout << "Valid: " << res.valid() << endl;
+            //cout << "Res: " << res.get() << endl;
+            //return res.get();
+        });
     }
     condition.notify_one();
     return res;
@@ -141,7 +285,7 @@ inline ProcessPool::~ProcessPool()
     condition.notify_all();
     for(size_t i = 0; i < children.size(); ++i)
         wait_for_exit(children[i]);
-    for(size_t i = 0;i<workers.size();++i)
+    for(size_t i = 0; i<workers.size(); ++i)
         workers[i].join();
 }
 

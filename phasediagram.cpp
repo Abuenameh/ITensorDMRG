@@ -182,7 +182,7 @@ int main(int argc, char **argv)
 #ifdef AMAZON_EC2
     string groundstate = "/home/ubuntu/ITensorDMRG/GroundState/Release/GroundState";
 #endif
-    ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is) {
+    ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is, istream& abortis, bool& abort) {
         write(os, sites);
         write(os, nsweeps);
         write(os, minm);
@@ -192,6 +192,7 @@ int main(int argc, char **argv)
         write(os, noise);
         write(os, errgoal);
         write(os, quiet);
+        //return false;
     });
 
     concurrent_queue<Results> resq;
@@ -202,11 +203,18 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](ostream& os, istream& is, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
+            pool.enqueue([&](ostream& os, istream& is, istream& abortis, bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
                 write(os, xs);
                 write(os, Us);
                 write(os, mus);
                 write(os, N);
+                
+                //bool abort = false;
+                read(abortis, abort);
+                cout << "Read abort: " << abort << endl;
+                if(abort) {
+                    return;// true;
+                }
 
                 Results res;
 
@@ -224,6 +232,8 @@ int main(int argc, char **argv)
                 read(is, res.runtime);
 
                 resq->push(res);
+                
+                //return false;
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
     }

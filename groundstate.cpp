@@ -8,6 +8,7 @@
 
 #include <boost/multi_array.hpp>
 #include <boost/process.hpp>
+#include <boost/iostreams/stream.hpp>
 
 #include "ipc.h"
 
@@ -42,13 +43,33 @@ using std::chrono::duration_cast;
 
 using boost::extents;
 using boost::multi_array;
+using namespace boost::iostreams;
 using namespace boost::process;
 using namespace boost::process::initializers;
 
 using namespace itensor;
 
+//int i = 0;
+//stream<file_descriptor_sink> abortos;
+stream<file_descriptor_sink> *abortos;
+//ostream abortos;
+//stream abortos
+
+void sigabort(int)
+{
+    cerr << "Aborting" << endl;
+    //write(*abortos, i);
+    bool abort = true;
+    write(*abortos, abort);
+}
+
 int main(int argc, char **argv)
 {
+    //i = stoi(argv[1]);
+    stream<file_descriptor_sink> os(42, never_close_handle);
+    abortos = &os;
+    signal(SIGABRT, sigabort);
+
     BoseHubbardSiteSet sites;
     read(cin, sites);
     const int L = sites.N();
@@ -102,6 +123,7 @@ int main(int argc, char **argv)
 
         int N;
         read(cin, N);
+        abort();
 
         time_point<system_clock> start = system_clock::now();
 
@@ -176,6 +198,9 @@ int main(int argc, char **argv)
         write(cout, n2);
         write(cout, C);
         write(cout, runtime);
+
+    bool abort = false;
+    write(*abortos, abort);
     }
 
     return 0;
