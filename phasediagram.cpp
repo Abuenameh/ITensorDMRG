@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     int L = 50;
     int nmax = 7;
 
-    int nsweeps = 15;
+    int nsweeps = 10;
     Real errgoal = -1;
     bool quiet = true;
 
