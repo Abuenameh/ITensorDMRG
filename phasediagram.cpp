@@ -192,7 +192,6 @@ int main(int argc, char **argv)
         write(os, noise);
         write(os, errgoal);
         write(os, quiet);
-        //return false;
     });
 
     concurrent_queue<Results> resq;
@@ -209,11 +208,10 @@ int main(int argc, char **argv)
                 write(os, mus);
                 write(os, N);
                 
-                //bool abort = false;
                 read(abortis, abort);
                 cout << "Read abort: " << abort << endl;
                 if(abort) {
-                    return;// true;
+                    return;
                 }
 
                 Results res;
@@ -233,7 +231,6 @@ int main(int argc, char **argv)
 
                 resq->push(res);
                 
-                //return false;
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
     }

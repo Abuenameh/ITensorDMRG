@@ -49,23 +49,16 @@ using namespace boost::process::initializers;
 
 using namespace itensor;
 
-//int i = 0;
-//stream<file_descriptor_sink> abortos;
 stream<file_descriptor_sink> *abortos;
-//ostream abortos;
-//stream abortos
 
 void sigabort(int)
 {
-    cerr << "Aborting" << endl;
-    //write(*abortos, i);
     bool abort = true;
     write(*abortos, abort);
 }
 
 int main(int argc, char **argv)
 {
-    //i = stoi(argv[1]);
     stream<file_descriptor_sink> os(42, never_close_handle);
     abortos = &os;
     signal(SIGABRT, sigabort);
@@ -112,7 +105,6 @@ int main(int argc, char **argv)
     bool quiet;
     read(cin, quiet);
 
-
     while(true) {
 
         vector<Real> Js(L), Us(L), mus(L);
@@ -123,7 +115,6 @@ int main(int argc, char **argv)
 
         int N;
         read(cin, N);
-        abort();
 
         time_point<system_clock> start = system_clock::now();
 
@@ -175,7 +166,7 @@ int main(int argc, char **argv)
                 zipUpApplyMPO(psi0, bs[i], psi);
             bpsi.push_back(psi);
         }
-        
+
         vector<Real> n(L), n2(L);
         vector<vector<Real> > C(L, vector<Real>(L));
         for(int i = 0; i < L; i++) {
@@ -199,8 +190,8 @@ int main(int argc, char **argv)
         write(cout, C);
         write(cout, runtime);
 
-    bool abort = false;
-    write(*abortos, abort);
+        bool abort = false;
+        write(*abortos, abort);
     }
 
     return 0;

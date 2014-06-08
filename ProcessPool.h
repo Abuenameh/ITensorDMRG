@@ -35,7 +35,7 @@ public:
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args)
     -> future<typename result_of<F(ostream&, istream&, istream&, bool&, Args...)>::type>;
-    void recreate_process(string prog, callback init, int i);
+    void create_process(string prog, callback init);
     void interrupt();
     ~ProcessPool();
 private:
@@ -105,16 +105,15 @@ private:
     
 }*/
 
-void ProcessPool::recreate_process(string prog, callback init, int i)
+void ProcessPool::create_process(string prog, callback init)
 {
+    cout << endl << "Create process" << endl << endl;
     vector< string > args;
     args.push_back(prog);
 
         boost::process::pipe abortpipe = create_pipe();
-        int abortfd = abortp.source;
-        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
-        //file_descriptor_abortsink = new file_descriptor_sink(abortp.sink);
-        file_descriptor_source abortsource(abortp.source, never_close_handle);
+        file_descriptor_sink abortsink(abortpipe.sink, never_close_handle);
+        file_descriptor_source abortsource(abortpipe.source, never_close_handle);
         stream<file_descriptor_sink> abortos(abortsink);
         stream<file_descriptor_source> abortis(abortsource);
 
@@ -129,18 +128,14 @@ void ProcessPool::recreate_process(string prog, callback init, int i)
         stream<file_descriptor_sink> os(insink);
         stream<file_descriptor_source> is(outsource);
 
-        ofds.push_back(pin.sink);
-        ifds.push_back(pout.source);
-
-        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
+        //children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
+        children.push_back(execute(set_args(vector<string>{prog}), inherit_env(), bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle)), bind_fd(42, file_descriptor_sink(abortpipe.sink, never_close_handle))));
 
 bool abort;
         init(os, is, abortis, abort);
 
-        cout << "Workers length (before): " << workers.size() << endl;
-//auto it = workers.emplace(workers.begin()+i,
         workers.emplace_back(
-        [this,i,abortpipe,inpipe,outpipe,abortfd,init,prog] {
+        [this,prog,init,outpipe,inpipe,abortpipe] {
             for(;;) {
                 unique_lock<mutex> lock(this->queue_mutex);
                 while(!this->stop && this->tasks.empty())
@@ -149,27 +144,25 @@ bool abort;
                     return;
                 callback task(this->tasks.front());
                 this->tasks.pop();
-                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
-                stream<infd> is(infd(this->ifds[i], never_close_handle));
-                stream<infd> abortis(infd(abortfd, never_close_handle));
                 lock.unlock();
-                bool abort;// = task(os, is, abortis);
+                stream<file_descriptor_sink> os(file_descriptor_sink(outpipe.sink, never_close_handle));
+                stream<file_descriptor_source> is(file_descriptor_source(inpipe.source, never_close_handle));
+                stream<file_descriptor_source> abortis(file_descriptor_source(abortpipe.source, never_close_handle));
+                bool abort;
                 task(os, is, abortis, abort);
-                cout << "Abort: " << abort << endl;
+                //cout << "Abort: " << abort << endl;
                 if(abort) {
-                    cout << "Thread aborted." << endl;
+                    //cout << "Thread aborted." << endl;
                     lock.lock();
-                    this->recreate_process(prog, init, i);
+                    this->create_process(prog, init);
+                    this->tasks.push(task);
                     lock.unlock();
                     break;
                 }
             }
         }
         );
-        workers.erase(it);
-        //workers.erase(it+1);
         cout << "Workers length: " << workers.size() << endl;
-        //workers.erase(workers.begin()+i);
     }
 
 
@@ -177,13 +170,14 @@ bool abort;
 inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
     :   stop(false)
 {
-    vector< string > args;
+    /*vector< string > args;
     args.push_back(prog);
-    args.push_back("0");
+    args.push_back("0");*/
 
     for(size_t i = 0; i<processes; ++i) {
+        create_process(prog, init);
 
-        boost::process::pipe abortp = create_pipe();
+        /*boost::process::pipe abortp = create_pipe();
         int abortfd = abortp.source;
         file_descriptor_sink abortsink(abortp.sink, never_close_handle);
         //file_descriptor_abortsink = new file_descriptor_sink(abortp.sink);
@@ -231,13 +225,13 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
                 cout << "Abort: " << abort << endl;
                 if(abort) {
                     lock.lock();
-                    this->recreate_process(prog, init, i);
+                    //this->recreate_process(prog, init, i);
                     lock.unlock();
                     break;
                 }
             }
         }
-        );
+        );*/
     }
 }
 
@@ -260,9 +254,9 @@ auto ProcessPool::enqueue(F&& f, Args&&... args)
         unique_lock<mutex> lock(queue_mutex);
         tasks.push([task,&res](ostream& os, istream& is, istream& abortis, bool& abort) {
             (*task)(os, is, abortis, abort);
-            //cout << "Valid: " << res.valid() << endl;
-            //cout << "Res: " << res.get() << endl;
-            //return res.get();
+            if(abort) {
+                task->reset();
+            }
         });
     }
     condition.notify_one();
