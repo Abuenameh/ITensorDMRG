@@ -209,7 +209,6 @@ int main(int argc, char **argv)
                 write(os, N);
                 
                 read(abortis, abort);
-                cout << "Read abort: " << abort << endl;
                 if(abort) {
                     return;
                 }

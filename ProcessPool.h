@@ -40,8 +40,6 @@ public:
     ~ProcessPool();
 private:
     vector<child> children;
-    vector<int> ofds;
-    vector<int> ifds;
     // need to keep track of threads so we can join them
     vector<thread> workers;
     // the task queue
@@ -53,185 +51,59 @@ private:
     bool stop;
 };
 
-/*void create_process()
-{
-        boost::process::pipe abortp = create_pipe();
-        int abortfd = abortp.source;
-        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
-        file_descriptor_source abortsource(abortp.source, never_close_handle);
-        stream<file_descriptor_sink> abortos(abortsink);
-        stream<file_descriptor_source> abortis(abortsource);
-
-        boost::process::pipe pin = create_pipe();
-        file_descriptor_sink insink(pin.sink, never_close_handle);
-        file_descriptor_source insource(pin.source, never_close_handle);
-
-        boost::process::pipe pout = create_pipe();
-        file_descriptor_sink outsink(pout.sink, never_close_handle);
-        file_descriptor_source outsource(pout.source, never_close_handle);
-
-        stream<file_descriptor_sink> os(insink);
-        stream<file_descriptor_source> is(outsource);
-
-        ofds.push_back(pin.sink);
-        ifds.push_back(pout.source);
-
-        args[1] = to_string(i);
-        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
-
-        init(os, is, abortis);
-
-        workers.emplace_back(
-        [this,i,abortfd] {
-            for(;;) {
-                unique_lock<mutex> lock(this->queue_mutex);
-                while(!this->stop && this->tasks.empty())
-                    this->condition.wait(lock);
-                if(this->stop || this->tasks.empty())
-                    return;
-                callback task(this->tasks.front());
-                this->tasks.pop();
-                lock.unlock();
-                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
-                stream<infd> is(infd(this->ifds[i], never_close_handle));
-                stream<infd> abortis(infd(abortfd, never_close_handle));
-                bool abort = task(os, is, abortis);
-                if(abort) {
-                    break;
-                }
-            }
-        }
-        );
-    
-}*/
-
 void ProcessPool::create_process(string prog, callback init)
 {
-    cout << endl << "Create process" << endl << endl;
-    vector< string > args;
-    args.push_back(prog);
+    boost::process::pipe outpipe = create_pipe();
+    stream<file_descriptor_sink> os(file_descriptor_sink(outpipe.sink, never_close_handle));
 
-        boost::process::pipe abortpipe = create_pipe();
-        file_descriptor_sink abortsink(abortpipe.sink, never_close_handle);
-        file_descriptor_source abortsource(abortpipe.source, never_close_handle);
-        stream<file_descriptor_sink> abortos(abortsink);
-        stream<file_descriptor_source> abortis(abortsource);
+    boost::process::pipe inpipe = create_pipe();
+    stream<file_descriptor_source> is(file_descriptor_source(inpipe.source, never_close_handle));
 
-        boost::process::pipe outpipe = create_pipe();
-        file_descriptor_sink insink(outpipe.sink, never_close_handle);
-        file_descriptor_source insource(outpipe.source, never_close_handle);
+    boost::process::pipe abortpipe = create_pipe();
+    stream<file_descriptor_source> abortis(file_descriptor_source(abortpipe.source, never_close_handle));
 
-        boost::process::pipe inpipe = create_pipe();
-        file_descriptor_sink outsink(inpipe.sink, never_close_handle);
-        file_descriptor_source outsource(inpipe.source, never_close_handle);
+    children.push_back(execute(set_args(vector<string> {prog}), inherit_env(), bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle)), bind_fd(42, file_descriptor_sink(abortpipe.sink, never_close_handle))));
 
-        stream<file_descriptor_sink> os(insink);
-        stream<file_descriptor_source> is(outsource);
+    bool abort;
+    init(os, is, abortis, abort);
 
-        //children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
-        children.push_back(execute(set_args(vector<string>{prog}), inherit_env(), bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle)), bind_fd(42, file_descriptor_sink(abortpipe.sink, never_close_handle))));
+    workers.emplace_back(
+    [this,prog,init,outpipe,inpipe,abortpipe] {
+        for(;;) {
+            unique_lock<mutex> lock(this->queue_mutex);
+            while(!this->stop && this->tasks.empty())
+                this->condition.wait(lock);
+            if(this->stop || this->tasks.empty())
+                return;
+            callback task(this->tasks.front());
+            this->tasks.pop();
+            lock.unlock();
 
-bool abort;
-        init(os, is, abortis, abort);
+            stream<file_descriptor_sink> os(file_descriptor_sink(outpipe.sink, never_close_handle));
+            stream<file_descriptor_source> is(file_descriptor_source(inpipe.source, never_close_handle));
+            stream<file_descriptor_source> abortis(file_descriptor_source(abortpipe.source, never_close_handle));
 
-        workers.emplace_back(
-        [this,prog,init,outpipe,inpipe,abortpipe] {
-            for(;;) {
-                unique_lock<mutex> lock(this->queue_mutex);
-                while(!this->stop && this->tasks.empty())
-                    this->condition.wait(lock);
-                if(this->stop || this->tasks.empty())
-                    return;
-                callback task(this->tasks.front());
-                this->tasks.pop();
+            bool abort;
+            task(os, is, abortis, abort);
+            if(abort) {
+                lock.lock();
+                this->create_process(prog, init);
+                this->tasks.push(task);
                 lock.unlock();
-                stream<file_descriptor_sink> os(file_descriptor_sink(outpipe.sink, never_close_handle));
-                stream<file_descriptor_source> is(file_descriptor_source(inpipe.source, never_close_handle));
-                stream<file_descriptor_source> abortis(file_descriptor_source(abortpipe.source, never_close_handle));
-                bool abort;
-                task(os, is, abortis, abort);
-                //cout << "Abort: " << abort << endl;
-                if(abort) {
-                    //cout << "Thread aborted." << endl;
-                    lock.lock();
-                    this->create_process(prog, init);
-                    this->tasks.push(task);
-                    lock.unlock();
-                    break;
-                }
+                break;
             }
         }
-        );
-        cout << "Workers length: " << workers.size() << endl;
     }
+    );
+}
 
 
 // the constructor just launches some amount of workers
 inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
     :   stop(false)
 {
-    /*vector< string > args;
-    args.push_back(prog);
-    args.push_back("0");*/
-
     for(size_t i = 0; i<processes; ++i) {
         create_process(prog, init);
-
-        /*boost::process::pipe abortp = create_pipe();
-        int abortfd = abortp.source;
-        file_descriptor_sink abortsink(abortp.sink, never_close_handle);
-        //file_descriptor_abortsink = new file_descriptor_sink(abortp.sink);
-        file_descriptor_source abortsource(abortp.source, never_close_handle);
-        stream<file_descriptor_sink> abortos(abortsink);
-        stream<file_descriptor_source> abortis(abortsource);
-
-        boost::process::pipe pin = create_pipe();
-        file_descriptor_sink insink(pin.sink, never_close_handle);
-        file_descriptor_source insource(pin.source, never_close_handle);
-
-        boost::process::pipe pout = create_pipe();
-        file_descriptor_sink outsink(pout.sink, never_close_handle);
-        file_descriptor_source outsource(pout.source, never_close_handle);
-
-        stream<file_descriptor_sink> os(insink);
-        stream<file_descriptor_source> is(outsource);
-
-        ofds.push_back(pin.sink);
-        ifds.push_back(pout.source);
-
-        args[1] = to_string(i);
-        children.push_back(execute(set_args(args), inherit_env(), bind_stdin(insource), bind_stdout(outsink), bind_fd(42, abortsink)));
-
-        bool abort;
-        init(os, is, abortis, abort);
-
-        workers.emplace_back(
-        [this,i,abortfd,prog,init] {
-            for(;;) {
-                unique_lock<mutex> lock(this->queue_mutex);
-                while(!this->stop && this->tasks.empty())
-                    this->condition.wait(lock);
-                if(this->stop || this->tasks.empty())
-                    return;
-                callback task(this->tasks.front());
-                this->tasks.pop();
-                stream<outfd> os(outfd(this->ofds[i], never_close_handle));
-                stream<infd> is(infd(this->ifds[i], never_close_handle));
-                stream<infd> abortis(infd(abortfd, never_close_handle));
-                lock.unlock();
-                cout << "About to do task" << endl;
-                bool abort;// = task(os, is, abortis);
-                task(os, is, abortis, abort);
-                cout << "Abort: " << abort << endl;
-                if(abort) {
-                    lock.lock();
-                    //this->recreate_process(prog, init, i);
-                    lock.unlock();
-                    break;
-                }
-            }
-        }
-        );*/
     }
 }
 
