@@ -128,16 +128,16 @@ int main(int argc, char **argv)
     int L = 50;
     int nmax = 7;
 
-    int nsweeps = 10;
+    int nsweeps = 20;
     Real errgoal = -1;
     bool quiet = true;
 
     Sweeps sweeps(nsweeps);
     sweeps.minm() = 20;
-    sweeps.maxm() = 10,20,100,100,200;
+    sweeps.maxm() = 10,20,100,100,200/*,200,300,300,400*/;
     sweeps.cutoff() = 1E-10;
-    sweeps.niter() = 2;
-    sweeps.noise() = 1E-7,1E-8,0.0;
+    sweeps.niter() = 4;
+    sweeps.noise() = /*1E-4,1E-5,*/1E-6,1E-7,1E-8,0.0;
 
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
     
     vector<Real> mus(L, 0);
     std::mt19937 gen;
-    std::uniform_real_distribution dist(-ximax, ximax);
+    std::uniform_real_distribution<> dist(-ximax, ximax);
     auto randmu = bind(dist, gen);
     gen.seed(seed);
     for(int i = 0; i < L; i++) {

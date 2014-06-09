@@ -170,7 +170,7 @@ int main(int argc, char **argv)
         vector<Real> n(L), n2(L);
         vector<vector<Real> > C(L, vector<Real>(L));
         for(int i = 0; i < L; i++) {
-            psi0.position(i);
+            psi0.position(i+1);
             n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
             n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
             for(int j = 0; j <= i; j++) {
