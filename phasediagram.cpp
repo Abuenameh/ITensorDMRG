@@ -197,7 +197,15 @@ int main(int argc, char **argv)
     concurrent_queue<Results> resq;
 
     vector<Real> Us(L, 1);
+    
     vector<Real> mus(L, 0);
+    std::mt19937 gen;
+    std::uniform_real_distribution dist(-ximax, ximax);
+    auto randmu = bind(dist, gen);
+    gen.seed(seed);
+    for(int i = 0; i < L; i++) {
+        mus[i] = randmu();
+    }
 
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
