@@ -155,9 +155,12 @@ int main(int argc, char **argv)
 
         } catch(...) {
         }
+        
+        psi0.position(1);
 
         vector<IQMPS> bpsi;
         const bool exact = true;
+        try{
         for(int i = 0; i < L; ++i) {
             IQMPS psi;
             if(exact)
@@ -165,6 +168,11 @@ int main(int argc, char **argv)
             else
                 zipUpApplyMPO(psi0, bs[i], psi);
             bpsi.push_back(psi);
+        }
+        
+        }catch(ITError e){
+            cerr << "Eror: " << e.what() << endl;
+            //throw e;
         }
 
         vector<Real> n(L), n2(L);
