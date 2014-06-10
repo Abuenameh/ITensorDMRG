@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 
     vector<IQTensor> ns, n2s;
     //vector<IQMPO> bs;
-    vector<vector<IQMPO> > bdbs;//(10*L, vector<IQMPO>(10*L));
+    vector<vector<IQMPO> > bdbs(L, vector<IQMPO>(L));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
@@ -79,15 +79,26 @@ int main(int argc, char **argv)
         //bs.push_back(bi);
         
         for(int j = 1; j < i; j++) {
-            //bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
         }
         
-        vector<IQMPO> bdbi;
+        /*vector<IQMPO> bdbi;
         for(int j = 1; j <= L; j++) {
-            bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", i, "B", j));
+            //HamBuilder<IQTensor>* hb = new HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+            //bdbi.push_back(*hb);
+            bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", 19, "B", 18));
+        }
+        bdbs.push_back(bdbi);*/
+    }
+
+    /*for(int i = 1; i >= 1; i--) {
+        vector<IQMPO> bdbi;
+        for(int j = L; j >= 1; j--) {
+            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+            //bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", 19, "B", 18));
         }
         bdbs.push_back(bdbi);
-    }
+    }*/
 
     int nsweeps;
     read(cin, nsweeps);
@@ -132,7 +143,7 @@ int main(int argc, char **argv)
         IQMPS psi0;
         Real E0 = NAN;
         vector<Real> Ei;
-
+        
         try {
 
             BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
@@ -186,18 +197,28 @@ int main(int argc, char **argv)
             //throw e;
         }*/
 
-        vector<Real> n(L), n2(L);
+    
         vector<vector<Real> > C(L, vector<Real>(L));
         for(int i = 0; i < L; i++) {
-            psi0.position(i+1);
-            n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
-            n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
             for(int j = 0; j < i; j++) {
                 Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
                 cerr << "Cij: " << i << "," << j << " " << Cij << endl;
                 C[i][j] = Cij;
                 C[j][i] = Cij;
             }
+        }
+
+        vector<Real> n(L), n2(L);
+        for(int i = 0; i < L; i++) {
+            psi0.position(i+1);
+            n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
+            n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
+            /*for(int j = 0; j < i; j++) {
+                Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
+                cerr << "Cij: " << i << "," << j << " " << Cij << endl;
+                C[i][j] = Cij;
+                C[j][i] = Cij;
+            }*/
         }
 
         time_point<system_clock> end = system_clock::now();
