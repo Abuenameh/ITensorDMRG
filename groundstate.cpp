@@ -68,18 +68,18 @@ int main(int argc, char **argv)
     const int L = sites.N();
 
     vector<IQTensor> ns, n2s;
-    vector<IQMPO> bs;
+    //vector<IQMPO> bs;
     vector<vector<IQMPO> > bdbs(L, vector<IQMPO>(L));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
 
-        IQMPO bi = HamBuilder<IQTensor>(sites, "B", i);
-        bi.position(1);
-        bs.push_back(bi);
+        //IQMPO bi = HamBuilder<IQTensor>(sites, "B", i);
+        //bi.position(1);
+        //bs.push_back(bi);
         
         for(int j = 1; j <= i; j++) {
-            bdbs[i][j] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
         }
     }
 
@@ -161,24 +161,24 @@ int main(int argc, char **argv)
         } catch(...) {
         }
         
-        psi0.position(1);
+        /*psi0.position(1);
 
-        vector<IQMPS> bpsi;
+        /vector<IQMPS> bpsi;
         const bool exact = true;
         try{
         for(int i = 0; i < L; ++i) {
             IQMPS psi;
-            /*if(exact)
+            if(exact)
                 exactApplyMPO(psi0, bs[i], psi);
             else
-                zipUpApplyMPO(psi0, bs[i], psi);*/
+                zipUpApplyMPO(psi0, bs[i], psi);
             bpsi.push_back(psi);
         }
         
         }catch(ITError e){
             cerr << "Eror: " << e.what() << endl;
             //throw e;
-        }
+        }*/
 
         vector<Real> n(L), n2(L);
         vector<vector<Real> > C(L, vector<Real>(L));
