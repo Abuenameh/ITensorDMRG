@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 
     vector<IQTensor> ns, n2s;
     //vector<IQMPO> bs;
-    vector<vector<IQMPO> > bdbs(L, vector<IQMPO>(L));
+    vector<vector<IQMPO> > bdbs;//(10*L, vector<IQMPO>(10*L));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
@@ -78,9 +78,15 @@ int main(int argc, char **argv)
         //bi.position(1);
         //bs.push_back(bi);
         
-        for(int j = 1; j <= i; j++) {
-            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+        for(int j = 1; j < i; j++) {
+            //bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
         }
+        
+        vector<IQMPO> bdbi;
+        for(int j = 1; j <= L; j++) {
+            bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", i, "B", j));
+        }
+        bdbs.push_back(bdbi);
     }
 
     int nsweeps;
@@ -186,8 +192,9 @@ int main(int argc, char **argv)
             psi0.position(i+1);
             n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
             n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
-            for(int j = 0; j <= i; j++) {
+            for(int j = 0; j < i; j++) {
                 Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
+                cerr << "Cij: " << i << "," << j << " " << Cij << endl;
                 C[i][j] = Cij;
                 C[j][i] = Cij;
             }

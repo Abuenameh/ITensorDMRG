@@ -125,7 +125,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 50;
+    int L = 20;
     int nmax = 7;
 
     int nsweeps = 20;
