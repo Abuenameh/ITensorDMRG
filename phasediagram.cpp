@@ -57,7 +57,8 @@ struct Results {
     vector<Real> Ei;
     vector<Real> n;
     vector<Real> n2;
-    vector<vector<Real> > C;
+    //vector<vector<Real> > C;
+    vector<Real> C;
     int runtime;
 };
 
@@ -125,10 +126,10 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 100;
+    int L = 50;
     int nmax = 7;
 
-    int nsweeps = 20;
+    int nsweeps = 80;
     Real errgoal = -1;
     bool quiet = true;
 
@@ -277,7 +278,8 @@ int main(int argc, char **argv)
     multi_array<vector<Real>, 2> Eires(extents[nx][nN]);
     multi_array<vector<Real>, 2> nres(extents[nx][nN]);
     multi_array<vector<Real>, 2> n2res(extents[nx][nN]);
-    multi_array<vector<vector<Real> >, 2> Cres(extents[nx][nN]);
+    //multi_array<vector<vector<Real> >, 2> Cres(extents[nx][nN]);
+    multi_array<vector<Real>, 2> Cres(extents[nx][nN]);
     multi_array<string, 2> runtimei(extents[nx][nN]);
 
     for(int ix = 0; ix < nx; ++ix) {
@@ -289,7 +291,8 @@ int main(int argc, char **argv)
             Eires[ix][iN] = vector<Real>(1, NAN);
             nres[ix][iN].assign(L, NAN);
             n2res[ix][iN].assign(L, NAN);
-            Cres[ix][iN].assign(L, vector<Real>(L, NAN));
+            //Cres[ix][iN].assign(L, vector<Real>(L, NAN));
+            Cres[ix][iN].assign(L, NAN);
             runtimei[ix][iN] = "unfinished";
         }
     }
