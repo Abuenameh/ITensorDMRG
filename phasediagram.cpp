@@ -134,10 +134,10 @@ int main(int argc, char **argv)
 
     Sweeps sweeps(nsweeps);
     sweeps.minm() = 20;
-    sweeps.maxm() = 10,20,100,100,200/*,200,300,300,400*/;
+    sweeps.maxm() = 10,20,100,100,200,200,300,300,400;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 4;
-    sweeps.noise() = /*1E-4,1E-5,*/1E-6,1E-7,1E-8,0.0;
+    sweeps.noise() = 1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
 
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);

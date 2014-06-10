@@ -137,8 +137,19 @@ auto ProcessPool::enqueue(F&& f, Args&&... args)
 
 void ProcessPool::interrupt()
 {
-    unique_lock<mutex> lock(queue_mutex);
-    stop = true;
+    {
+        unique_lock<mutex> lock(queue_mutex);
+        stop = true;
+    }
+    condition.notify_all();
+    for(size_t i = 0; i < children.size(); ++i) {
+        try {
+            terminate(children[i]);
+            wait_for_exit(children[i]);
+        } catch(...) {}
+    }
+    //for(size_t i = 0; i<workers.size(); ++i)
+        //workers[i].join();
 }
 
 // the destructor joins all threads
@@ -149,10 +160,13 @@ inline ProcessPool::~ProcessPool()
         stop = true;
     }
     condition.notify_all();
-    for(size_t i = 0; i < children.size(); ++i)
-        wait_for_exit(children[i]);
-    for(size_t i = 0; i<workers.size(); ++i)
-        workers[i].join();
+    for(size_t i = 0; i < children.size(); ++i) {
+        try {
+            wait_for_exit(children[i]);
+        } catch(...) {}
+    }
+    //for(size_t i = 0; i<workers.size(); ++i)
+        //workers[i].join();
 }
 
 #endif
