@@ -202,7 +202,7 @@ int main(int argc, char **argv)
         for(int i = 0; i < L; i++) {
             for(int j = 0; j < i; j++) {
                 Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
-                cerr << "Cij: " << i << "," << j << " " << Cij << endl;
+                //cerr << "Cij: " << i << "," << j << " " << Cij << endl;
                 C[i][j] = Cij;
                 C[j][i] = Cij;
             }
