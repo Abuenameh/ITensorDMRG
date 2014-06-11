@@ -80,7 +80,7 @@ int main(int argc, char **argv)
         //bs.push_back(bi);
         
         for(int j = 1; j < i; j++) {
-            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
+            //bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
         }
         
         /*vector<IQMPO> bdbi;
