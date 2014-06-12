@@ -126,10 +126,10 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 50;
+    int L = 20;
     int nmax = 7;
 
-    int nsweeps = 30;
+    int nsweeps = 20;
     Real errgoal = -1;
     bool quiet = true;
 
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
     sweeps.maxm() = 1000000;//10,20,100,100,200,200,300,300,400;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 4;
-    sweeps.noise() = 1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
+    sweeps.noise() = 0;//1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
 
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
@@ -177,6 +177,39 @@ int main(int argc, char **argv)
 
     BoseHubbardSiteSet sites(L, nmax);
 
+    vector<IQMPO> Cds;
+    /*for(int d = 1; d < L; d++) {
+        IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+        for(int i = 2; i <= L-d; i++) {
+            Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
+        }
+        Cd *= 1./(L-d);
+        Cds.push_back(Cd);
+    }*/
+
+    string setupfile = format("%s/setup.%d.%d.dat", resdir, L, nmax);
+    ifstream setupis(setupfile, ios::binary);
+    if(setupis.good()) {
+        read(setupis, sites);
+        Cds.resize(L-1, IQMPO(sites));
+        read(setupis, Cds);
+    } else {
+        for(int d = 1; d < L; d++) {
+            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+            for(int i = 2; i <= L-d; i++) {
+                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
+            }
+            Cd *= 1./(L-d);
+            Cds.push_back(Cd);
+        }
+        ofstream setupos(setupfile, ios::binary);
+        cout << "About to write setup" << endl;
+        write(setupos, sites);
+        cout << "Wrote sites" << endl;
+        write(setupos, Cds);
+        cout << "Wrote Cds" << endl;
+    }
+
 #ifdef MACOSX
     string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
 #endif
@@ -185,6 +218,7 @@ int main(int argc, char **argv)
 #endif
     ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is, istream& abortis, bool& abort) {
         write(os, sites);
+        write(os, Cds);
         write(os, nsweeps);
         write(os, minm);
         write(os, maxm);
@@ -198,7 +232,7 @@ int main(int argc, char **argv)
     concurrent_queue<Results> resq;
 
     vector<Real> Us(L, 1);
-    
+
     vector<Real> mus(L, 0);
     std::mt19937 gen;
     std::uniform_real_distribution<> dist(-ximax, ximax);
@@ -216,7 +250,7 @@ int main(int argc, char **argv)
                 write(os, Us);
                 write(os, mus);
                 write(os, N);
-                
+
                 read(abortis, abort);
                 if(abort) {
                     return;
@@ -238,7 +272,7 @@ int main(int argc, char **argv)
                 read(is, res.runtime);
 
                 resq->push(res);
-                
+
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
     }
@@ -307,7 +341,7 @@ int main(int argc, char **argv)
         mures[ix][iN] = res.mus;
         E0res[ix][iN] = res.E0;
         Eires[ix][iN] = res.Ei;
-        
+
         nres[ix][iN] = res.n;
         n2res[ix][iN] = res.n2;
         Cres[ix][iN] = res.C;

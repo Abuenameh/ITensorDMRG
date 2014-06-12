@@ -68,47 +68,25 @@ int main(int argc, char **argv)
     const int L = sites.N();
 
     vector<IQTensor> ns, n2s;
-    //vector<IQMPO> bs;
     vector<vector<IQMPO> > bdbs(L, vector<IQMPO>(L));
-    vector<IQMPO> Cds;//(L-1);
+    vector<IQMPO> Cds(L-1, IQMPO(sites));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
 
-        //IQMPO bi = HamBuilder<IQTensor>(sites, "B", i);
-        //bi.position(1);
-        //bs.push_back(bi);
-        
-        for(int j = 1; j < i; j++) {
-            //bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
-        }
-        
-        /*vector<IQMPO> bdbi;
-        for(int j = 1; j <= L; j++) {
-            //HamBuilder<IQTensor>* hb = new HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
-            //bdbi.push_back(*hb);
-            bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", 19, "B", 18));
-        }
-        bdbs.push_back(bdbi);*/
     }
 
-        for(int d = 1; d < L; d++) {
-            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
-            for(int i = 2; i <= L-d; i++) {
-                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
-            }
-            Cd *= 1./(L-d);
-            Cds.push_back(Cd);
+    /*for(int d = 1; d < L; d++) {
+        IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+        for(int i = 2; i <= L-d; i++) {
+            Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
         }
-        
-    /*for(int i = 1; i >= 1; i--) {
-        vector<IQMPO> bdbi;
-        for(int j = L; j >= 1; j--) {
-            bdbs[i-1][j-1] = HamBuilder<IQTensor>(sites, "Bdag", i, "B", j);
-            //bdbi.push_back(HamBuilder<IQTensor>(sites, "Bdag", 19, "B", 18));
-        }
-        bdbs.push_back(bdbi);
+        Cd *= 1./(L-d);
+        Cds.push_back(Cd);
     }*/
+    cerr << "About to read Cds" << endl;
+    read(cin, Cds);
+    cerr << "Read Cds" << endl;
 
     int nsweeps;
     read(cin, nsweeps);
@@ -150,10 +128,14 @@ int main(int argc, char **argv)
 
         time_point<system_clock> start = system_clock::now();
 
+        vector<IQMPS> psis;
+        vector<Real> E0s;
+        vector<vector<Real> > Eis;
+
         IQMPS psi0;
         Real E0 = NAN;
         vector<Real> Ei;
-        
+
         try {
 
             BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
@@ -163,61 +145,45 @@ int main(int argc, char **argv)
 
             IQMPO H = BH;
 
-            InitState initState(sites);
-            int n0 = N / L;
-            for(int i = 1; i <= L; ++i) {
-                if(i <= N % L)
-                    initState.set(i,std::to_string(n0+1));
-                else
-                    initState.set(i,std::to_string(n0));
+            for(int eig = 0; eig < 1; eig++) {
+
+                InitState initState(sites);
+                int n0 = N / L;
+                for(int i = 1; i <= L; ++i) {
+                    if(i <= N % L)
+                        initState.set(i,std::to_string(n0+1));
+                    else
+                        initState.set(i,std::to_string(n0));
+                }
+                IQMPS psi(initState);
+
+                cerr << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
+
+                BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
+
+                E0 = dmrg(psi,H,psis,sweeps,observer,Opt("Quiet",quiet));
+
+                psi0 = psi;
+
+                cerr << format("\nGround State Energy = %.10f",E0) << endl;
+
+                Ei = observer.getEnergies();
+
+                psis.push_back(psi0);
+                E0s.push_back(E0);
+                Eis.push_back(Ei);
+
             }
-            IQMPS psi(initState);
-
-            cerr << format("Initial energy = %.5f", psiHphi(psi,H,psi)) << endl;
-
-            BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
-
-            E0 = dmrg(psi,H,sweeps,observer,Opt("Quiet",quiet));
-
-            psi0 = psi;
-
-            cerr << format("\nGround State Energy = %.10f",E0) << endl;
-
-            Ei = observer.getEnergies();
 
         } catch(...) {
         }
-        
-        /*psi0.position(1);
 
-        /vector<IQMPS> bpsi;
-        const bool exact = true;
-        try{
-        for(int i = 0; i < L; ++i) {
-            IQMPS psi;
-            if(exact)
-                exactApplyMPO(psi0, bs[i], psi);
-            else
-                zipUpApplyMPO(psi0, bs[i], psi);
-            bpsi.push_back(psi);
-        }
-        
-        }catch(ITError e){
-            cerr << "Eror: " << e.what() << endl;
-            //throw e;
-        }*/
+        auto minE0 = min_element(E0s.begin(), E0s.end());
+        int pos = distance(E0s.begin(), minE0);
+        E0 = E0s[pos];
+        psi0 = psis[pos];
+        Ei = Eis[pos];
 
-    
-        /*vector<vector<Real> > C(L, vector<Real>(L));
-        for(int i = 0; i < L; i++) {
-            for(int j = 0; j < i; j++) {
-                Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
-                //cerr << "Cij: " << i << "," << j << " " << Cij << endl;
-                C[i][j] = Cij;
-                C[j][i] = Cij;
-            }
-        }*/
-        
         vector<Real> C;
         for(int i = 0; i < L-1; i++) {
             C.push_back(psiHphi(psi0, Cds[i], psi0));
@@ -228,12 +194,6 @@ int main(int argc, char **argv)
             psi0.position(i+1);
             n[i] = Dot(conj(primed(psi0.A(i+1),Site)),ns[i]*psi0.A(i+1));
             n2[i] = Dot(conj(primed(psi0.A(i+1),Site)),n2s[i]*psi0.A(i+1));
-            /*for(int j = 0; j < i; j++) {
-                Real Cij = psiHphi(psi0, bdbs[i][j], psi0);//psiphi(bpsi[i], bpsi[j]);
-                cerr << "Cij: " << i << "," << j << " " << Cij << endl;
-                C[i][j] = Cij;
-                C[j][i] = Cij;
-            }*/
         }
 
         time_point<system_clock> end = system_clock::now();
