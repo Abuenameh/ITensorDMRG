@@ -129,7 +129,7 @@ int main(int argc, char **argv)
     int L = 50;
     int nmax = 7;
 
-    int nsweeps = 80;
+    int nsweeps = 20;
     Real errgoal = -1;
     bool quiet = true;
 
@@ -208,7 +208,8 @@ int main(int argc, char **argv)
     }
 
 #ifdef MACOSX
-    string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
+//    string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
+    string groundstate = "/Users/Abuenameh/NetBeansProjects/DMRGGroundState/dist/Release/CLang-MacOSX/dmrggroundstate";
 #endif
 #ifdef AMAZON_EC2
     string groundstate = "/home/ubuntu/ITensorDMRG/GroundState/Release/GroundState";

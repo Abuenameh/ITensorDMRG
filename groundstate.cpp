@@ -145,15 +145,15 @@ int main(int argc, char **argv)
 
             IQMPO H = BH;
 
-            for(int eig = 0; eig < 4; eig++) {
+            for(int eig = 0; eig < 1; eig++) {
 
                 InitState initState(sites);
                 int n0 = N / L;
                 for(int i = 1; i <= L; ++i) {
                     if(i <= N % L)
-                        initState.set(i,std::to_string(n0+1));
+                        initState.set(L+1-i,std::to_string(n0+1));
                     else
-                        initState.set(i,std::to_string(n0));
+                        initState.set(L+1-i,std::to_string(n0));
                 }
                 IQMPS psi(initState);
 
