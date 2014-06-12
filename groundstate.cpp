@@ -55,6 +55,7 @@ void sigabort(int)
 {
     bool abort = true;
     write(*abortos, abort);
+    exit(1);
 }
 
 int main(int argc, char **argv)
@@ -62,6 +63,7 @@ int main(int argc, char **argv)
     stream<file_descriptor_sink> os(42, never_close_handle);
     abortos = &os;
     signal(SIGABRT, sigabort);
+    signal(SIGINT, sigabort);
 
     BoseHubbardSiteSet sites;
     read(cin, sites);
@@ -84,9 +86,7 @@ int main(int argc, char **argv)
         Cd *= 1./(L-d);
         Cds.push_back(Cd);
     }*/
-    cerr << "About to read Cds" << endl;
     read(cin, Cds);
-    cerr << "Read Cds" << endl;
 
     int nsweeps;
     read(cin, nsweeps);
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 
             IQMPO H = BH;
 
-            for(int eig = 0; eig < 1; eig++) {
+            for(int eig = 0; eig < 4; eig++) {
 
                 InitState initState(sites);
                 int n0 = N / L;
