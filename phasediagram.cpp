@@ -129,7 +129,7 @@ int main(int argc, char **argv)
     int L = 50;
     int nmax = 7;
 
-    int nsweeps = 20;
+    int nsweeps = 40;
     Real errgoal = -1;
     bool quiet = true;
 
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
     sweeps.maxm() = 1000000;//10,20,100,100,200,200,300,300,400;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 4;
-    sweeps.noise() = 1e-6,1e-7,1e-8,0;//1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
+    sweeps.noise() = 1,1,1,1,1,1e-6,1e-7,1e-8,0;//1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
 
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
