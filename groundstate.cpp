@@ -65,6 +65,9 @@ int main(int argc, char **argv)
     signal(SIGABRT, sigabort);
     signal(SIGINT, sigabort);
 
+    std::random_device rd;
+    std::mt19937 g(rd());
+
     BoseHubbardSiteSet sites;
     read(cin, sites);
     const int L = sites.N();
@@ -147,13 +150,18 @@ int main(int argc, char **argv)
 
             for(int eig = 0; eig < 1; eig++) {
 
+                std::vector<int> ind;
+                for(int i = 1; i <= L; i++)
+                    ind.push_back(i);
+                std::shuffle(ind.begin(), ind.end(), g);
+                
                 InitState initState(sites);
                 int n0 = N / L;
                 for(int i = 1; i <= L; ++i) {
                     if(i <= N % L)
-                        initState.set(L+1-i,std::to_string(n0+1));
+                        initState.set(ind[i-1],std::to_string(n0+1));
                     else
-                        initState.set(L+1-i,std::to_string(n0));
+                        initState.set(ind[i-1],std::to_string(n0));
                 }
                 IQMPS psi(initState);
 
@@ -161,7 +169,7 @@ int main(int argc, char **argv)
 
                 BoseHubbardObserver<IQTensor> observer(psi,Opt("EnergyErrgoal",errgoal));
 
-                E0 = dmrg(psi,H,psis,sweeps,observer,Opt("Quiet",quiet));
+                E0 = dmrg(psi,H,/*psis,*/sweeps,observer,Opt("Quiet",quiet));
 
                 psi0 = psi;
 
