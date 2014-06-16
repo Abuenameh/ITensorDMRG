@@ -165,6 +165,9 @@ int main(int argc, char **argv)
 #ifdef AMAZON_EC2
     string resdir = "/home/ubuntu/Dropbox/Amazon EC2/Simulation Results/BH-ITensor-DMRG";
 #endif
+#ifdef FST
+    string resdir = "C:/Users/abuenameh/Dropbox/Server/ITensorDMRG";
+#endif
     string resfile = format("%s/res.%d.txt", resdir, resi);
     ofstream os(resfile);
 
@@ -221,6 +224,7 @@ int main(int argc, char **argv)
     string groundstate = "/home/ubuntu/ITensorDMRG/GroundState/Release/GroundState";
 #endif
 #ifdef FST
+    string groundstate = "C:/Users/abuenameh/Documents/NetBeansProjects/DMRGGroundState/dist/Release/MinGW_TDM-Windows/dmrggroundstate.exe";
 #endif
     ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is, istream& abortis, bool& abort) {
         write(os, sites);
@@ -295,6 +299,8 @@ int main(int argc, char **argv)
     string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
 #ifdef FST
+    string python = "C:/Python27/bin/python.exe";
+    string script = "C:/Users/abuenameh/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
     vector<string> args;
     args.push_back(python);
