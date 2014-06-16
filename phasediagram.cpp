@@ -90,11 +90,16 @@ vector<Real> linspace(Real min, Real max, int n)
     return result;
 }
 
+Results* interruptRes;
+concurrent_queue<Results>* interruptResq;
+
 atomic_bool interrupted;
 
 void sigint(int)
 {
     interrupted = true;
+    interruptResq->push(*interruptRes);
+    cout << "Interrupted" << endl;
 }
 
 int main(int argc, char **argv)
@@ -154,7 +159,8 @@ int main(int argc, char **argv)
     }
 
 #ifdef MACOSX
-    string resdir = "/Users/Abuenameh/Documents/Simulation Results/BH-ITensor-DMRG";
+//    string resdir = "/Users/Abuenameh/Documents/Simulation Results/BH-ITensor-DMRG";
+    string resdir = "/Users/Abuenameh/Dropbox/Simulation Results/ITensorDMRG";
 #endif
 #ifdef AMAZON_EC2
     string resdir = "/home/ubuntu/Dropbox/Amazon EC2/Simulation Results/BH-ITensor-DMRG";
@@ -214,6 +220,8 @@ int main(int argc, char **argv)
 #ifdef AMAZON_EC2
     string groundstate = "/home/ubuntu/ITensorDMRG/GroundState/Release/GroundState";
 #endif
+#ifdef FST
+#endif
     ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is, istream& abortis, bool& abort) {
         write(os, sites);
         write(os, Cds);
@@ -228,6 +236,9 @@ int main(int argc, char **argv)
     });
 
     concurrent_queue<Results> resq;
+    
+    interruptResq = &resq;
+    interruptRes = new Results;
 
     vector<Real> Us(L, 1);
 
@@ -283,6 +294,8 @@ int main(int argc, char **argv)
     string python = "/usr/bin/python";
     string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
+#ifdef FST
+#endif
     vector<string> args;
     args.push_back(python);
     args.push_back(script);
@@ -332,6 +345,9 @@ int main(int argc, char **argv)
     Results res;
     while(!interrupted && count++ < nx*nN) {
         resq.wait_and_pop(res);
+        if(interrupted) {
+            break;
+        }
         int ix = res.ix;
         int iN = res.iN;
         xres[ix][iN] = res.xs;
@@ -350,7 +366,7 @@ int main(int argc, char **argv)
         ((int*)message.data())[0] = 1;
         socket.send(message);
     }
-
+    
     pool.interrupt();
     terminate(c);
 
