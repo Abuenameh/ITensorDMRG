@@ -20,6 +20,8 @@
 #include "BoseHubbardHamiltonian.h"
 #include "BoseHubbardObserver.h"
 
+#include <zmq.hpp>
+
 using std::ref;
 using std::stoi;
 using std::stod;
@@ -27,9 +29,11 @@ using std::cin;
 using std::cout;
 using std::cerr;
 using std::endl;
+using std::flush;
 using std::string;
 using std::vector;
 using std::queue;
+using std::thread;
 using std::to_string;
 using std::ofstream;
 using std::ifstream;
@@ -49,6 +53,10 @@ using namespace boost::process::initializers;
 
 using namespace itensor;
 
+using namespace zmq;
+
+#ifndef FST
+
 stream<file_descriptor_sink> *abortos;
 
 void sigabort(int)
@@ -58,27 +66,56 @@ void sigabort(int)
     exit(1);
 }
 
+#else
+#endif
+
 int main(int argc, char **argv)
 {
-    stream<file_descriptor_sink> os(42, never_close_handle);
-    abortos = &os;
+    string base = "tcp://127.0.0.1:";
+    string inport = base + argv[2];
+    string outport = base + argv[3];
+    
+    /*context_t context(1);
+    socket_t is(context, ZMQ_PULL);
+    socket_t os(context, ZMQ_PUSH);
+    
+    is.bind(inport.c_str());
+    os.connect(outport.c_str());*/
+    
+    nnxx::socket is(nnxx::SP, nnxx::PULL);
+    nnxx::socket os(nnxx::SP, nnxx::PUSH);
+    
+    is.bind(inport);
+    os.connect(outport);
+    
+    cout << "Created sockets" << endl;
+    
+//    string queue_name = argv[1];
+    message_queue mq(open_only, argv[1]);
+    
+    cout << "Opened message queue" << endl;
+    
+    
+#ifndef FST
+    stream<file_descriptor_sink> mq(42, never_close_handle);
+    abortos = &mq;
     signal(SIGABRT, sigabort);
     signal(SIGINT, sigabort);
+#endif
 
     std::random_device rd;
     std::mt19937 g(rd());
 
     BoseHubbardSiteSet sites;
-    read(cin, sites);
+    read(mq, sites);
     const int L = sites.N();
+    cout << "Read sites" << endl << flush;
 
     vector<IQTensor> ns, n2s;
-    vector<vector<IQMPO> > bdbs(L, vector<IQMPO>(L));
     vector<IQMPO> Cds(L-1, IQMPO(sites));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
-
     }
 
     /*for(int d = 1; d < L; d++) {
@@ -89,21 +126,25 @@ int main(int argc, char **argv)
         Cd *= 1./(L-d);
         Cds.push_back(Cd);
     }*/
-    read(cin, Cds);
+    cout << "About to read Cds" << endl << flush;
+    read(mq, Cds);
+    cout << "Read Cds" << endl << flush;
 
     int nsweeps;
-    read(cin, nsweeps);
+    read(mq, nsweeps);
+    cout << "Read nsweeps" << endl << flush;
 
     Sweeps sweeps(nsweeps);
 
     vector<int> minm(nsweeps), maxm(nsweeps), niter(nsweeps);
     vector<Real> cutoff(nsweeps), noise(nsweeps);
 
-    read(cin, minm);
-    read(cin, maxm);
-    read(cin, niter);
-    read(cin, cutoff);
-    read(cin, noise);
+    read(mq, minm);
+    read(mq, maxm);
+    read(mq, niter);
+    read(mq, cutoff);
+    read(mq, noise);
+    cout << "Read sweeps" << endl << flush;
     for(int sw = 1; sw <= nsweeps; sw++) {
         sweeps.setminm(sw, minm[sw-1]);
         sweeps.setmaxm(sw, maxm[sw-1]);
@@ -113,21 +154,36 @@ int main(int argc, char **argv)
     }
 
     Real errgoal;
-    read(cin, errgoal);
+    read(mq, errgoal);
+    cout << "Read errgoal" << endl << flush;
 
     bool quiet;
-    read(cin, quiet);
+    read(mq, quiet);
+    
+    cout << "Read setup" << endl << flush;
 
+    int wait = 1;
+    write(mq, wait);
+//    abort();
+    
     while(true) {
 
+        cout << "Creating parameter vectors " + inport << endl << flush;
         vector<Real> Js(L), Us(L), mus(L);
+        cout << "Created parameter vectors " + inport << endl << flush;
 
-        read(cin, Js);
-        read(cin, Us);
-        read(cin, mus);
+        try{
+        read(mq, Js);
+        } catch(...) {cout << "----------------------Exception----------------------" << endl << flush;}
+        cout << "Read J " + inport << endl;
+        read(mq, Us);
+        cout << "Read U " + inport << endl;
+        read(mq, mus);
+        cout << "Read parameters " + inport << endl;
 
         int N;
-        read(cin, N);
+        read(mq, N);
+        cout << "Read particle number" << endl;
 
         time_point<system_clock> start = system_clock::now();
 
@@ -139,14 +195,16 @@ int main(int argc, char **argv)
         Real E0 = NAN;
         vector<Real> Ei;
 
-        try {
+//        try {
 
             BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
             BH.J(Js);
             BH.U(Us);
             BH.mu(mus);
+            cout << "Created Hamiltonian" << endl;
 
             IQMPO H = BH;
+            cout << "Converted Hamiltonian" << endl;
 
             for(int eig = 0; eig < 1; eig++) {
 
@@ -183,8 +241,8 @@ int main(int argc, char **argv)
 
             }
 
-        } catch(...) {
-        }
+//        } catch(...) {
+//        }
 
         auto minE0 = min_element(E0s.begin(), E0s.end());
         int pos = distance(E0s.begin(), minE0);
@@ -207,15 +265,12 @@ int main(int argc, char **argv)
         time_point<system_clock> end = system_clock::now();
         int runtime = duration_cast<seconds>(end - start).count();
 
-        write(cout, E0);
-        write(cout, Ei);
-        write(cout, n);
-        write(cout, n2);
-        write(cout, C);
-        write(cout, runtime);
-
-        bool abort = false;
-        write(*abortos, abort);
+        write(mq, E0);
+        write(mq, Ei);
+        write(mq, n);
+        write(mq, n2);
+        write(mq, C);
+        write(mq, runtime);
     }
 
     return 0;

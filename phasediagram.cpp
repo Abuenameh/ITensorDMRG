@@ -2,13 +2,15 @@
 #include <fstream>
 #include <chrono>
 #include <queue>
-#include <core.h>
-#include <hambuilder.h>
 
 #include <boost/multi_array.hpp>
 #include <boost/process.hpp>
 
 #include <zmq.hpp>
+
+#undef small
+#include <core.h>
+#include <hambuilder.h>
 
 #include "ipc.h"
 #include "concurrent_queue.h"
@@ -20,12 +22,16 @@
 #include "BoseHubbardHamiltonian.h"
 #include "BoseHubbardObserver.h"
 
+#include <sites/hubbard.h>
+#include <hams/HubbardChain.h>
+
 using std::ref;
 using std::stoi;
 using std::stod;
 using std::cout;
 using std::cerr;
 using std::endl;
+using std::flush;
 using std::string;
 using std::vector;
 using std::queue;
@@ -44,6 +50,7 @@ using boost::multi_array;
 using namespace boost::process;
 using namespace boost::process::initializers;
 
+using namespace zmq;
 
 using namespace itensor;
 
@@ -90,10 +97,24 @@ vector<Real> linspace(Real min, Real max, int n)
     return result;
 }
 
+atomic_bool interrupted;
+
 Results* interruptRes;
 concurrent_queue<Results>* interruptResq;
 
-atomic_bool interrupted;
+#ifdef FST
+
+BOOL WINAPI ConsoleHandler(DWORD type)
+{
+    if(type == CTRL_C_EVENT) {
+        interrupted = true;
+        interruptResq->push(*interruptRes);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+#else
 
 void sigint(int)
 {
@@ -101,6 +122,8 @@ void sigint(int)
     interruptResq->push(*interruptRes);
     cout << "Interrupted" << endl;
 }
+
+#endif
 
 int main(int argc, char **argv)
 {
@@ -110,6 +133,8 @@ int main(int argc, char **argv)
     }
 
     time_point<system_clock> start = system_clock::now();
+    
+    ProcessPool::queue_idx = start.time_since_epoch().count();
 
     int resi = stoi(argv[1]);
 
@@ -131,7 +156,7 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 50;
+    int L = 5;
     int nmax = 7;
 
     int nsweeps = 40;
@@ -185,37 +210,58 @@ int main(int argc, char **argv)
     printMath(os, "Ns", resi, Nv);
 
     BoseHubbardSiteSet sites(L, nmax);
-
+    
     vector<IQMPO> Cds;
-    /*for(int d = 1; d < L; d++) {
-        IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
-        for(int i = 2; i <= L-d; i++) {
-            Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
-        }
-        Cd *= 1./(L-d);
-        Cds.push_back(Cd);
-    }*/
+    vector<MPO> Cdstmp;
 
     string setupfile = format("%s/setup.%d.%d.dat", resdir, L, nmax);
-    ifstream setupis(setupfile, ios::binary);
+    ifstream setupis(setupfile+"a", ios::binary);
     if(setupis.good()) {
         read(setupis, sites);
-        Cds.resize(L-1, IQMPO(sites));
-        read(setupis, Cds);
+        Cdstmp.resize(L-1, MPO(sites));
+        read(setupis, Cdstmp);
     } else {
         for(int d = 1; d < L; d++) {
-            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+            MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
             for(int i = 2; i <= L-d; i++) {
-                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
+                Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
             }
             Cd *= 1./(L-d);
-            Cds.push_back(Cd);
+            Cdstmp.push_back(Cd);
+            //Cds.push_back(Cd.toIQMPO());
         }
         ofstream setupos(setupfile, ios::binary);
         write(setupos, sites);
-        write(setupos, Cds);
+        write(setupos, Cdstmp);
     }
+    for(int i = 0; i < L-1; i++) {
+        Cds.push_back(Cdstmp[i].toIQMPO());
+    }
+    
+    /*context_t gscontext(numthreads);
+    vector<context_t> incontexts;
+    vector<socket_t> outsockets, insockets;
+    vector<connection_monitor> monitors;
+    vector<thread> monitorthreads;
+    string monitoraddr = "inproc://monitor.";
+//    vector<int> outports, inports;
+//    int port = 5555;
+    for(int i = 0; i < numthreads; i++) {
+        outsockets.emplace_back(gscontext, ZMQ_PUSH);
+//        outports.push_back(port++);
+        //outsockets.back().connect(("tcp://localhost:" + to_string(outports.back())).c_str());
 
+        incontexts.emplace_back();
+        insockets.emplace_back(incontexts.back(), ZMQ_PULL);
+        monitors.emplace_back(incontexts.back(), insockets.back());
+        monitorthreads.emplace_back([&] () {
+            monitors.back().monitor(insockets.back(), (monitoraddr + to_string(reinterpret_cast<int>(&insockets.back()))).c_str(), ZMQ_EVENT_DISCONNECTED);
+        });
+//        inports.push_back(port++);
+        //insockets.back().bind(("tcp://localhost:" + to_string(inports.back())).c_str());
+    }*/
+    
+    
 #ifdef MACOSX
 //    string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
     string groundstate = "/Users/Abuenameh/NetBeansProjects/DMRGGroundState/dist/Release/CLang-MacOSX/dmrggroundstate";
@@ -226,24 +272,36 @@ int main(int argc, char **argv)
 #ifdef FST
     string groundstate = "C:/Users/abuenameh/Documents/NetBeansProjects/DMRGGroundState/dist/Release/MinGW_TDM-Windows/dmrggroundstate.exe";
 #endif
-    ProcessPool pool(numthreads, groundstate, [&] (ostream& os, istream& is, istream& abortis, bool& abort) {
-        write(os, sites);
-        write(os, Cds);
-        write(os, nsweeps);
-        write(os, minm);
-        write(os, maxm);
-        write(os, niter);
-        write(os, cutoff);
-        write(os, noise);
-        write(os, errgoal);
-        write(os, quiet);
+    ProcessPool pool(numthreads, groundstate, /*outsockets, incontexts, insockets,*/ [&] (message_queue& mq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
+        cout << "Writing sites" << endl;
+        write(mq, sites);
+        cout << "Writing Cds" << endl << flush;
+        write(mq, Cds);
+        cout << "Wrote Cds" << endl << flush;
+        write(mq, nsweeps);
+        cout << "Wrote nsweeps" << endl << flush;
+        write(mq, minm);
+        write(mq, maxm);
+        write(mq, niter);
+        write(mq, cutoff);
+        write(mq, noise);
+        cout << "Wrote sweeps" << endl << flush;
+        write(mq, errgoal);
+        cout << "Wrote errgoal" << endl << flush;
+        write(mq, quiet);
+        cout << "Wrote quiet" << endl << flush;
+        cout << "About to wait" << endl << flush;
+        int wait = 0;
+        read(mq, wait);
     });
-
+    
     concurrent_queue<Results> resq;
     
+//#ifndef FST
     interruptResq = &resq;
     interruptRes = new Results;
-
+//#endif
+    
     vector<Real> Us(L, 1);
 
     vector<Real> mus(L, 0);
@@ -258,17 +316,27 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](ostream& os, istream& is, istream& abortis, bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
-                write(os, xs);
-                write(os, Us);
-                write(os, mus);
-                write(os, N);
+            pool.enqueue([&](message_queue& mq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
+                cout << "Writing parameters " << (int)(&mq) << endl << flush;
+//                for(;;) {}
+                try{
+                write(mq, xs);
+                cout << "Wrote xs " << (int)(&mq) << endl << flush;
+                write(mq, Us);
+                cout << "Wrote Us " << (int)(&mq) << endl << flush;
+                write(mq, mus);
+                cout << "Wrote mus" << endl << flush;
+                write(mq, N);
+                cout << "Wrote N" << endl << flush;
+                }catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
 
+#ifndef FST
                 read(abortis, abort);
                 if(abort) {
                     return;
                 }
-
+#endif
+                
                 Results res;
 
                 res.ix = ix;
@@ -277,18 +345,28 @@ int main(int argc, char **argv)
                 res.Us = Us;
                 res.mus = mus;
 
-                read(is, res.E0);
-                read(is, res.Ei);
-                read(is, res.n);
-                read(is, res.n2);
-                read(is, res.C);
-                read(is, res.runtime);
+                try{
+                    cout << "About to read E0" << endl << flush;
+                read(mq, res.E0);
+                read(mq, res.Ei);
+                read(mq, res.n);
+                read(mq, res.n2);
+                read(mq, res.C);
+                read(mq, res.runtime);
 
                 resq->push(res);
+                }
+                catch(...) {
+                    cout << "-----Aborting-----" << endl << endl;
+                    abort = true;
+                    return;
+                }
+                abort = false;
 
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
     }
+
 
 #ifdef MACOSX
     string python = "/Library/Frameworks/Python.framework/Versions/2.7/bin/python";
@@ -299,7 +377,7 @@ int main(int argc, char **argv)
     string script = "/home/ubuntu/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
 #ifdef FST
-    string python = "C:/Python27/bin/python.exe";
+    string python = "C:/Python27/python.exe";
     string script = "C:/Users/abuenameh/PycharmProjects/BH-DMRG/ZMQProgressDialog.py";
 #endif
     vector<string> args;
@@ -318,8 +396,12 @@ int main(int argc, char **argv)
     socket.send(lenmessage);
 
     interrupted = false;
+#ifdef FST
+    SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE);
+#else
     signal(SIGINT, sigint);
-
+#endif
+    
     int count = 0;
 
     multi_array<vector<Real>, 2> xres(extents[nx][nN]);
@@ -374,7 +456,10 @@ int main(int argc, char **argv)
     }
     
     pool.interrupt();
+    try {
     terminate(c);
+    }
+    catch(...) {}
 
     printMath(os, "tres", resi, xres);
     printMath(os, "Ures", resi, Ures);
