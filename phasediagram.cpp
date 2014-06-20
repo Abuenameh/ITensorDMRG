@@ -210,31 +210,64 @@ int main(int argc, char **argv)
     printMath(os, "Ns", resi, Nv);
 
     BoseHubbardSiteSet sites(L, nmax);
+    MPO Cd0(sites);
     
     vector<IQMPO> Cds;
     vector<MPO> Cdstmp;
 
     string setupfile = format("%s/setup.%d.%d.dat", resdir, L, nmax);
-    ifstream setupis(setupfile+"a", ios::binary);
+    ifstream setupis(setupfile, ios::binary);
     if(setupis.good()) {
-        read(setupis, sites);
-        Cdstmp.resize(L-1, MPO(sites));
-        read(setupis, Cdstmp);
+//        read(setupis, sites);
+        sites.read(setupis);
+//        Cdstmp.resize(L-1, MPO(sites));
+//        Cdstmp.resize(L-1, Cd0);
+        //read(setupis, Cdstmp);
+        for(int d = 1; d < L; d++) {
+            MPO Cd(sites);
+            Cd.read(setupis);
+            //read(setupis, Cd);
+            Cdstmp.push_back(Cd);
+        }
     } else {
+        ofstream setupos(setupfile, ios::binary);
+        sites.write(setupos);
+//        write(setupos, sites);
         for(int d = 1; d < L; d++) {
             MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
             for(int i = 2; i <= L-d; i++) {
                 Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
             }
             Cd *= 1./(L-d);
+            //write(setupos, Cd);
+            Cd.write(setupos);
             Cdstmp.push_back(Cd);
             //Cds.push_back(Cd.toIQMPO());
         }
-        ofstream setupos(setupfile, ios::binary);
-        write(setupos, sites);
-        write(setupos, Cdstmp);
+//        write(setupos, Cdstmp);
     }
+    /*{
+        MPO mpo1(sites);
+        ostringstream oss;
+        write(oss, mpo1);
+//        mpo1.write(oss);
+        string str = oss.str();
+        MPO mpo2(sites);
+        istringstream iss;
+        iss.str(str);
+        read(iss, mpo2);
+//        mpo2.read(iss);
+        
+//        ostringstream oss;
+//        write(oss, Cdstmp);
+//        string str = oss.str();
+//        vector<MPO> Cdstmp2(L-1, MPO(sites));
+//        istringstream iss;
+//        iss.str(str);
+//        read(iss, Cdstmp2);
+    }*/
     for(int i = 0; i < L-1; i++) {
+        //MPO Cdtmp = Cdstmp[i];
         Cds.push_back(Cdstmp[i].toIQMPO());
     }
     
@@ -272,27 +305,27 @@ int main(int argc, char **argv)
 #ifdef FST
     string groundstate = "C:/Users/abuenameh/Documents/NetBeansProjects/DMRGGroundState/dist/Release/MinGW_TDM-Windows/dmrggroundstate.exe";
 #endif
-    ProcessPool pool(numthreads, groundstate, /*outsockets, incontexts, insockets,*/ [&] (message_queue& mq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
+    ProcessPool pool(numthreads, groundstate, /*outsockets, incontexts, insockets,*/ [&] (message_queue& oq, message_queue& iq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
         cout << "Writing sites" << endl;
-        write(mq, sites);
+        write(oq, sites);
         cout << "Writing Cds" << endl << flush;
-        write(mq, Cds);
+        write(oq, Cds);
         cout << "Wrote Cds" << endl << flush;
-        write(mq, nsweeps);
+        write(oq, nsweeps);
         cout << "Wrote nsweeps" << endl << flush;
-        write(mq, minm);
-        write(mq, maxm);
-        write(mq, niter);
-        write(mq, cutoff);
-        write(mq, noise);
+        write(oq, minm);
+        write(oq, maxm);
+        write(oq, niter);
+        write(oq, cutoff);
+        write(oq, noise);
         cout << "Wrote sweeps" << endl << flush;
-        write(mq, errgoal);
+        write(oq, errgoal);
         cout << "Wrote errgoal" << endl << flush;
-        write(mq, quiet);
+        write(oq, quiet);
         cout << "Wrote quiet" << endl << flush;
-        cout << "About to wait" << endl << flush;
-        int wait = 0;
-        read(mq, wait);
+//        cout << "About to wait" << endl << flush;
+//        int wait = 0;
+//        read(iq, wait);
     });
     
     concurrent_queue<Results> resq;
@@ -316,19 +349,19 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](message_queue& mq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
-                cout << "Writing parameters " << (int)(&mq) << endl << flush;
+            pool.enqueue([&](message_queue& oq, message_queue& iq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
+                cout << "Writing parameters " << (int)(&oq) << endl << flush;
 //                for(;;) {}
                 try{
-                write(mq, xs);
-                cout << "Wrote xs " << (int)(&mq) << endl << flush;
-                write(mq, Us);
-                cout << "Wrote Us " << (int)(&mq) << endl << flush;
-                write(mq, mus);
+                write(oq, xs);
+                cout << "Wrote xs " << (int)(&oq) << endl << flush;
+                write(oq, Us);
+                cout << "Wrote Us " << (int)(&oq) << endl << flush;
+                write(oq, mus);
                 cout << "Wrote mus" << endl << flush;
-                write(mq, N);
+                write(oq, N);
                 cout << "Wrote N" << endl << flush;
-                }catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
+                //}catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
 
 #ifndef FST
                 read(abortis, abort);
@@ -345,22 +378,27 @@ int main(int argc, char **argv)
                 res.Us = Us;
                 res.mus = mus;
 
-                try{
+                //try{
                     cout << "About to read E0" << endl << flush;
-                read(mq, res.E0);
-                read(mq, res.Ei);
-                read(mq, res.n);
-                read(mq, res.n2);
-                read(mq, res.C);
-                read(mq, res.runtime);
+                read(iq, res.E0);
+                cout << "Read E0" << endl << flush;
+                read(iq, res.Ei);
+                cout << "Read Ei" << endl << flush;
+                read(iq, res.n);
+                cout << "Read n" << endl << flush;
+                read(iq, res.n2);
+                cout << "Read n2" << endl << flush;
+                read(iq, res.C);
+                read(iq, res.runtime);
 
                 resq->push(res);
-                }
-                catch(...) {
-                    cout << "-----Aborting-----" << endl << endl;
-                    abort = true;
-                    return;
-                }
+                }catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
+//                }
+//                catch(...) {
+//                    cout << "-----Aborting-----" << endl << endl;
+//                    abort = true;
+//                    return;
+//                }
                 abort = false;
 
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);

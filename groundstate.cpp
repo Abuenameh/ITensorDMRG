@@ -67,13 +67,24 @@ void sigabort(int)
 }
 
 #else
+
+//char *oqueue_name;
+//char *iqueue_name;
+message_queue *oqueue;
+
+void sigabort(int)
+{
+    cout << endl << "------------------Aborting------------------" << endl;
+    vector<char> buf;
+    oqueue->send(buf.data(), 0, 0);
+}
 #endif
 
 int main(int argc, char **argv)
 {
-    string base = "tcp://127.0.0.1:";
-    string inport = base + argv[2];
-    string outport = base + argv[3];
+    /*string base = "tcp://127.0.0.1:";
+    string inport = base + argv[3];
+    string outport = base + argv[4];*/
     
     /*context_t context(1);
     socket_t is(context, ZMQ_PULL);
@@ -82,18 +93,23 @@ int main(int argc, char **argv)
     is.bind(inport.c_str());
     os.connect(outport.c_str());*/
     
-    nnxx::socket is(nnxx::SP, nnxx::PULL);
+    /*nnxx::socket is(nnxx::SP, nnxx::PULL);
     nnxx::socket os(nnxx::SP, nnxx::PUSH);
     
     is.bind(inport);
     os.connect(outport);
     
-    cout << "Created sockets" << endl;
+    cout << "Created sockets" << endl;*/
     
 //    string queue_name = argv[1];
-    message_queue mq(open_only, argv[1]);
+    message_queue iq(open_only, argv[1]);
+    message_queue oq(open_only, argv[2]);
     
-    cout << "Opened message queue" << endl;
+//    iqueue_name = argv[1];
+//    oqueue_name = argv[2];
+    oqueue = &oq;
+    
+    cout << "Opened message queues" << endl;
     
     
 #ifndef FST
@@ -101,13 +117,15 @@ int main(int argc, char **argv)
     abortos = &mq;
     signal(SIGABRT, sigabort);
     signal(SIGINT, sigabort);
+#else
+    signal(SIGABRT, sigabort);
 #endif
 
     std::random_device rd;
     std::mt19937 g(rd());
 
     BoseHubbardSiteSet sites;
-    read(mq, sites);
+    read(iq, sites);
     const int L = sites.N();
     cout << "Read sites" << endl << flush;
 
@@ -127,11 +145,11 @@ int main(int argc, char **argv)
         Cds.push_back(Cd);
     }*/
     cout << "About to read Cds" << endl << flush;
-    read(mq, Cds);
+    read(iq, Cds);
     cout << "Read Cds" << endl << flush;
 
     int nsweeps;
-    read(mq, nsweeps);
+    read(iq, nsweeps);
     cout << "Read nsweeps" << endl << flush;
 
     Sweeps sweeps(nsweeps);
@@ -139,11 +157,11 @@ int main(int argc, char **argv)
     vector<int> minm(nsweeps), maxm(nsweeps), niter(nsweeps);
     vector<Real> cutoff(nsweeps), noise(nsweeps);
 
-    read(mq, minm);
-    read(mq, maxm);
-    read(mq, niter);
-    read(mq, cutoff);
-    read(mq, noise);
+    read(iq, minm);
+    read(iq, maxm);
+    read(iq, niter);
+    read(iq, cutoff);
+    read(iq, noise);
     cout << "Read sweeps" << endl << flush;
     for(int sw = 1; sw <= nsweeps; sw++) {
         sweeps.setminm(sw, minm[sw-1]);
@@ -154,35 +172,35 @@ int main(int argc, char **argv)
     }
 
     Real errgoal;
-    read(mq, errgoal);
+    read(iq, errgoal);
     cout << "Read errgoal" << endl << flush;
 
     bool quiet;
-    read(mq, quiet);
+    read(iq, quiet);
     
     cout << "Read setup" << endl << flush;
 
-    int wait = 1;
-    write(mq, wait);
+//    int wait = 1;
+//    write(oq, wait);
 //    abort();
     
     while(true) {
 
-        cout << "Creating parameter vectors " + inport << endl << flush;
+//        cout << "Creating parameter vectors " + inport << endl << flush;
         vector<Real> Js(L), Us(L), mus(L);
-        cout << "Created parameter vectors " + inport << endl << flush;
+//        cout << "Created parameter vectors " + inport << endl << flush;
 
         try{
-        read(mq, Js);
+        read(iq, Js);
         } catch(...) {cout << "----------------------Exception----------------------" << endl << flush;}
-        cout << "Read J " + inport << endl;
-        read(mq, Us);
-        cout << "Read U " + inport << endl;
-        read(mq, mus);
-        cout << "Read parameters " + inport << endl;
+//        cout << "Read J " + inport << endl;
+        read(iq, Us);
+//        cout << "Read U " + inport << endl;
+        read(iq, mus);
+//        cout << "Read parameters " + inport << endl;
 
         int N;
-        read(mq, N);
+        read(iq, N);
         cout << "Read particle number" << endl;
 
         time_point<system_clock> start = system_clock::now();
@@ -265,12 +283,12 @@ int main(int argc, char **argv)
         time_point<system_clock> end = system_clock::now();
         int runtime = duration_cast<seconds>(end - start).count();
 
-        write(mq, E0);
-        write(mq, Ei);
-        write(mq, n);
-        write(mq, n2);
-        write(mq, C);
-        write(mq, runtime);
+        write(oq, E0);
+        write(oq, Ei);
+        write(oq, n);
+        write(oq, n2);
+        write(oq, C);
+        write(oq, runtime);
     }
 
     return 0;

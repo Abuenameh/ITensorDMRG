@@ -1,6 +1,7 @@
 #ifndef IPC_H
 #define IPC_H
 
+#include <stdexcept>
 #include <sstream>
 #include <cxxabi.h>
 
@@ -11,7 +12,8 @@
 #define BOOST_DATE_TIME_NO_LIB
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-#define MAX_MSG_SIZE 100*1024*1024
+#define NUM_MSG 100
+#define MAX_MSG_SIZE 1024*1024
 
 #include <core.h>
 #include "BoseHubbardSiteSet.h"
@@ -28,6 +30,7 @@ using std::vector;
 using std::string;
 using std::ostream;
 using std::stringstream;
+using std::runtime_error;
 
 using namespace boost::interprocess;
 
@@ -312,11 +315,16 @@ void read(nnxx::socket& is, vector<T>& v) {
 
 
 
+class connection_terminated : public runtime_error {
+    connection_terminated(const string& what) : runtime_error(what) {}
+};
 
 void write(message_queue& mq, BoseHubbardSiteSet& sites) {
     stringstream ss(std::ios_base::out);
     sites.write(ss);
     int len = ss.str().length();
+//    cout << "Write: Num msg " << mq.get_num_msg() << endl;
+//    cout << "Writing sites, len = " << len << endl;
     mq.send(ss.str().data(), len, 0);
 }
 
@@ -325,7 +333,8 @@ void write(message_queue& mq, MPOt<Tensor>& mpo) {
     stringstream ss(std::ios_base::out);
     mpo.write(ss);
     int len = ss.str().length();
-    cout << "Writing MPO, len = " << len << endl;
+//    cout << "Write: Num msg " << mq.get_num_msg() << endl;
+//    cout << "Writing MPO, len = " << len << endl;
     mq.send(ss.str().data(), len, 0);
 }
 
@@ -340,6 +349,13 @@ void write(message_queue& mq, vector<T>& v) {
     write(mq, len);
     for(int i = 0; i < len; i++) {
         write(mq, v[i]);
+//    cout << "Write: Num msg " << mq.get_num_msg() << endl;
+    }
+}
+
+inline void check_termination(int len) {
+    if (len == 0) {
+        throw runtime_error("Connection terminated");
     }
 }
 
@@ -348,6 +364,7 @@ void read(message_queue& mq, BoseHubbardSiteSet& sites) {
     message_queue::size_type len;
     vector<char> buf(MAX_MSG_SIZE);
     mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
+    check_termination(len);
     string str = "";
     str.append(buf.data(), len);
     stringstream ss(std::ios_base::in);
@@ -361,7 +378,8 @@ void read(message_queue& mq, MPOt<Tensor>& mpo) {
     message_queue::size_type len;
     vector<char> buf(MAX_MSG_SIZE);
     mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
-    cout << "Read MPO, len = " << len << endl;
+    check_termination(len);
+//    cout << "Read MPO, len = " << len << endl;
     string str = "";
     str.append(buf.data(), len);
     stringstream ss(std::ios_base::in);
@@ -373,15 +391,22 @@ template<class T>
 void read(message_queue& mq, T& t) {
     unsigned int priority;
     message_queue::size_type len;
-    mq.receive(&t, sizeof(T), len, priority);
-    cout << "Received T " << type_name<T>() << " " << t << endl;
+//    mq.receive(&t, sizeof(T), len, priority);
+    vector<char> buf(MAX_MSG_SIZE);
+    mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
+    check_termination(len);
+    t = *reinterpret_cast<T*>(buf.data());
+//    std::ostringstream ss;
+//    ss << "Received len = " << len << endl;
+//    cout << ss.str();
+//    cout << "Received T " << type_name<T>() << " " << t << endl;
 }
 
 template<class T>
 void read(message_queue& mq, vector<T>& v) {
     int len;
-    cout << "Num msg " << mq.get_num_msg() << endl;
-    cout << "About to read vector length" << endl;
+//    cout << "Read: Num msg " << mq.get_num_msg() << endl;
+//    cout << "About to read vector length" << endl;
     read(mq, len);
     v.resize(len);
     for(int i = 0; i < len; i++) {

@@ -10,6 +10,7 @@
 #include <future>
 #include <functional>
 #include <stdexcept>
+#include <chrono>
 
 #include <boost/process.hpp>
 #include <boost/iostreams/stream.hpp>
@@ -19,6 +20,7 @@
 #include <nnxx/socket>
 
 using namespace std;
+using namespace std::chrono;
 using namespace std::placeholders;
 using namespace boost::iostreams;
 using namespace boost::process;
@@ -32,7 +34,7 @@ typedef file_descriptor_source infd;
 
 //typedef function<void(ostream&, istream&, istream&, bool&)> callback;
 //typedef function<void(nnxx::socket&, nnxx::socket&, bool&)> callback;
-typedef function<void(message_queue&, bool&)> callback;
+typedef function<void(message_queue&, message_queue&, bool&)> callback;
 //typedef function<void(socket_t&, socket_t&, bool&)> callback;
 //typedef stream<file_descriptor_sink> postream;
 //typedef stream<file_descriptor_source> pistream;
@@ -43,13 +45,14 @@ public:
     ProcessPool(size_t, string, /*vector<socket_t>&, vector<context_t>&, vector<socket_t>&,*/ callback);
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args)
-    -> future<typename result_of<F(message_queue&, bool&, Args...)>::type>;
+    -> future<typename result_of<F(message_queue&, message_queue&, bool&, Args...)>::type>;
 //    -> future<typename result_of<F(nnxx::socket&, nnxx::socket&, bool&, Args...)>::type>;
     void create_process(string prog, callback init);
     void interrupt();
     ~ProcessPool();
 
-    static int queue_idx;
+    static system_clock::rep queue_idx;
+    
 private:
     vector<child> children;
     // need to keep track of threads so we can join them
@@ -67,8 +70,10 @@ private:
     vector<nnxx::socket> osockets;
     vector<nnxx::socket> isockets;
     
-    vector<unique_ptr<message_queue> > queues;
-    vector<string> queue_names;
+    vector<unique_ptr<message_queue> > iqueues;
+    vector<unique_ptr<message_queue> > oqueues;
+    vector<string> iqueue_names;
+    vector<string> oqueue_names;
 
     // synchronization
     mutex queue_mutex;
@@ -80,11 +85,11 @@ private:
 
 int ProcessPool::port = 5557;
 
-int ProcessPool::queue_idx = 0;
+system_clock::rep ProcessPool::queue_idx = 0;
 
 void ProcessPool::create_process(string prog, callback init)
 {
-    string outport = to_string(port++);
+    /*string outport = to_string(port++);
     string inport = to_string(port++);
     
     osockets.emplace_back(nnxx::SP, nnxx::PUSH);
@@ -94,15 +99,19 @@ void ProcessPool::create_process(string prog, callback init)
     nnxx::socket& is = isockets.back();
     
     os.connect("tcp://127.0.0.1:" + outport);
-    is.bind("tcp://127.0.0.1:" + inport);
+    is.bind("tcp://127.0.0.1:" + inport);*/
     
-    string queue_name = "dmrg." + to_string(queue_idx++);
-    queue_names.push_back(queue_name);
-//    queues.emplace_back(create_only, queue_name.c_str(), 100, MAX_MSG_SIZE);
-    unique_ptr<message_queue> queue = unique_ptr<message_queue>(new message_queue(create_only, queue_name.c_str(), 1000, MAX_MSG_SIZE));
-    message_queue& mq = *queue;
-    queues.push_back(move(queue));
-//    message_queue& mq = queues.back();
+    string oqueue_name = "dmrg." + to_string(queue_idx++);
+    oqueue_names.push_back(oqueue_name);
+    unique_ptr<message_queue> oqueue = unique_ptr<message_queue>(new message_queue(create_only, oqueue_name.c_str(), NUM_MSG, MAX_MSG_SIZE));
+    message_queue& oq = *oqueue;
+    oqueues.push_back(move(oqueue));
+
+    string iqueue_name = "dmrg." + to_string(queue_idx++);
+    iqueue_names.push_back(iqueue_name);
+    unique_ptr<message_queue> iqueue = unique_ptr<message_queue>(new message_queue(create_only, iqueue_name.c_str(), NUM_MSG, MAX_MSG_SIZE));
+    message_queue& iq = *iqueue;
+    iqueues.push_back(move(iqueue));
 
     /*outcontexts.emplace_back();
     outsockets.emplace_back(outcontexts.back(), ZMQ_PUSH);
@@ -130,7 +139,7 @@ void ProcessPool::create_process(string prog, callback init)
     /*int count = 0;
     cout << "Creating process" << endl;*/
 #ifdef FST
-    children.push_back(execute(set_args(vector<string> {prog, queue_name, outport, inport}), inherit_env()/*, bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle))*/));
+    children.push_back(execute(set_args(vector<string> {prog, oqueue_name, iqueue_name}), inherit_env()/*, bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle))*/));
 #else
     children.push_back(execute(set_args(vector<string> {prog}), inherit_env(), bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle)), bind_fd(42, file_descriptor_sink(abortpipe.sink, never_close_handle))));
 #endif
@@ -141,10 +150,10 @@ void ProcessPool::create_process(string prog, callback init)
     init(os, is, abortis, abort);*/
     
     bool abort;
-    init(mq, abort);
+    init(oq, iq, abort);
 
     workers.emplace_back(
-    [this,prog,init,&mq/*&os,&is*//*outpipe,inpipe,abortpipe*/] {
+    [this,prog,init,&oq,&iq/*&os,&is*//*outpipe,inpipe,abortpipe*/] {
         for(;;) {
             unique_lock<mutex> lock(this->queue_mutex);
             while(!this->stop && this->tasks.empty())
@@ -173,9 +182,9 @@ void ProcessPool::create_process(string prog, callback init)
 //            try {
 //                cout << "Trying" << endl;
             bool abort = false;
-            cout << "Running task " << (int)(&mq) << endl << flush;
-            task(mq, abort);
-            cout << "Aborted " << (int)(&mq) << ": " << abort << endl << flush;
+            cout << "Running task " << (int)(&oq) << endl << flush;
+            task(oq, iq, abort);
+            cout << "Aborted " << (int)(&oq) << ": " << abort << endl << flush;
             if(abort && !this->stop) {
                 lock.lock();
                 cout << "Recreating process" << endl;
@@ -205,25 +214,25 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, /*vector<socket_t
 // add new work item to the pool
 template<class F, class... Args>
 auto ProcessPool::enqueue(F&& f, Args&&... args)
--> future<typename result_of<F(message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&, Args...)>::type> {
-    typedef typename result_of<F(message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&, Args...)>::type return_type;
+-> future<typename result_of<F(message_queue&, message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&, Args...)>::type> {
+    typedef typename result_of<F(message_queue&, message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&, Args...)>::type return_type;
 
     cout << "Enqueueing" << endl << flush;
     // don't allow enqueueing after stopping the pool
     if(stop)
         throw runtime_error("enqueue on stopped ProcessPool");
 
-    auto task = std::make_shared< std::packaged_task<return_type(message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&)> >(
-        bind(forward<F>(f), placeholders::_1, placeholders::_2, forward<Args>(args)...)
+    auto task = std::make_shared< std::packaged_task<return_type(message_queue&, message_queue&, /*nnxx::socket&, nnxx::socket&,*/ bool&)> >(
+        bind(forward<F>(f), placeholders::_1, placeholders::_2, placeholders::_3, forward<Args>(args)...)
 //        bind(forward<F>(f), placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, forward<Args>(args)...)
     );
 
     future<return_type> res = task->get_future();
     {
         unique_lock<mutex> lock(queue_mutex);
-        tasks.push([task,&res](message_queue& mq, /*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
+        tasks.push([task,&res](message_queue& oq, message_queue& iq, /*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
 //            try {
-            (*task)(mq, abort);
+            (*task)(oq, iq, abort);
 //            } catch(...) { cout<<"Exception"<<endl;}
             if(abort) {
                 task->reset();
@@ -246,7 +255,8 @@ void ProcessPool::interrupt()
             terminate(children[i]);
             wait_for_exit(children[i]);
         } catch(...) {}
-        message_queue::remove(queue_names[i].c_str());
+        message_queue::remove(oqueue_names[i].c_str());
+        message_queue::remove(iqueue_names[i].c_str());
     }
     //for(size_t i = 0; i<workers.size(); ++i)
         //workers[i].join();
@@ -264,7 +274,8 @@ inline ProcessPool::~ProcessPool()
         try {
             wait_for_exit(children[i]);
         } catch(...) {}
-        message_queue::remove(queue_names[i].c_str());
+        message_queue::remove(oqueue_names[i].c_str());
+        message_queue::remove(iqueue_names[i].c_str());
     }
     //for(size_t i = 0; i<workers.size(); ++i)
         //workers[i].join();
