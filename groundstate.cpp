@@ -55,71 +55,23 @@ using namespace itensor;
 
 using namespace zmq;
 
-#ifndef FST
-
-stream<file_descriptor_sink> *abortos;
-
-void sigabort(int)
-{
-    bool abort = true;
-    write(*abortos, abort);
-    exit(1);
-}
-
-#else
-
-//char *oqueue_name;
-//char *iqueue_name;
 message_queue *oqueue;
 
 void sigabort(int)
 {
-    cout << endl << "------------------Aborting------------------" << endl;
     vector<char> buf;
     oqueue->send(buf.data(), 0, 0);
 }
-#endif
 
 int main(int argc, char **argv)
 {
-    /*string base = "tcp://127.0.0.1:";
-    string inport = base + argv[3];
-    string outport = base + argv[4];*/
-    
-    /*context_t context(1);
-    socket_t is(context, ZMQ_PULL);
-    socket_t os(context, ZMQ_PUSH);
-    
-    is.bind(inport.c_str());
-    os.connect(outport.c_str());*/
-    
-    /*nnxx::socket is(nnxx::SP, nnxx::PULL);
-    nnxx::socket os(nnxx::SP, nnxx::PUSH);
-    
-    is.bind(inport);
-    os.connect(outport);
-    
-    cout << "Created sockets" << endl;*/
-    
-//    string queue_name = argv[1];
     message_queue iq(open_only, argv[1]);
     message_queue oq(open_only, argv[2]);
     
-//    iqueue_name = argv[1];
-//    oqueue_name = argv[2];
     oqueue = &oq;
     
-    cout << "Opened message queues" << endl;
-    
-    
-#ifndef FST
-    stream<file_descriptor_sink> mq(42, never_close_handle);
-    abortos = &mq;
-    signal(SIGABRT, sigabort);
     signal(SIGINT, sigabort);
-#else
     signal(SIGABRT, sigabort);
-#endif
 
     std::random_device rd;
     std::mt19937 g(rd());
@@ -127,7 +79,6 @@ int main(int argc, char **argv)
     BoseHubbardSiteSet sites;
     read(iq, sites);
     const int L = sites.N();
-    cout << "Read sites" << endl << flush;
 
     vector<IQTensor> ns, n2s;
     vector<IQMPO> Cds(L-1, IQMPO(sites));
@@ -136,21 +87,10 @@ int main(int argc, char **argv)
         n2s.push_back(sites.op("N2", i));
     }
 
-    /*for(int d = 1; d < L; d++) {
-        IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
-        for(int i = 2; i <= L-d; i++) {
-            Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
-        }
-        Cd *= 1./(L-d);
-        Cds.push_back(Cd);
-    }*/
-    cout << "About to read Cds" << endl << flush;
     read(iq, Cds);
-    cout << "Read Cds" << endl << flush;
 
     int nsweeps;
     read(iq, nsweeps);
-    cout << "Read nsweeps" << endl << flush;
 
     Sweeps sweeps(nsweeps);
 
@@ -162,7 +102,6 @@ int main(int argc, char **argv)
     read(iq, niter);
     read(iq, cutoff);
     read(iq, noise);
-    cout << "Read sweeps" << endl << flush;
     for(int sw = 1; sw <= nsweeps; sw++) {
         sweeps.setminm(sw, minm[sw-1]);
         sweeps.setmaxm(sw, maxm[sw-1]);
@@ -173,35 +112,20 @@ int main(int argc, char **argv)
 
     Real errgoal;
     read(iq, errgoal);
-    cout << "Read errgoal" << endl << flush;
 
     bool quiet;
     read(iq, quiet);
     
-    cout << "Read setup" << endl << flush;
-
-//    int wait = 1;
-//    write(oq, wait);
-//    abort();
-    
     while(true) {
 
-//        cout << "Creating parameter vectors " + inport << endl << flush;
         vector<Real> Js(L), Us(L), mus(L);
-//        cout << "Created parameter vectors " + inport << endl << flush;
 
-        try{
         read(iq, Js);
-        } catch(...) {cout << "----------------------Exception----------------------" << endl << flush;}
-//        cout << "Read J " + inport << endl;
         read(iq, Us);
-//        cout << "Read U " + inport << endl;
         read(iq, mus);
-//        cout << "Read parameters " + inport << endl;
 
         int N;
         read(iq, N);
-        cout << "Read particle number" << endl;
 
         time_point<system_clock> start = system_clock::now();
 
@@ -213,16 +137,12 @@ int main(int argc, char **argv)
         Real E0 = NAN;
         vector<Real> Ei;
 
-//        try {
-
             BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
             BH.J(Js);
             BH.U(Us);
             BH.mu(mus);
-            cout << "Created Hamiltonian" << endl;
 
             IQMPO H = BH;
-            cout << "Converted Hamiltonian" << endl;
 
             for(int eig = 0; eig < 1; eig++) {
 
@@ -259,8 +179,6 @@ int main(int argc, char **argv)
 
             }
 
-//        } catch(...) {
-//        }
 
         auto minE0 = min_element(E0s.begin(), E0s.end());
         int pos = distance(E0s.begin(), minE0);

@@ -210,7 +210,6 @@ int main(int argc, char **argv)
     printMath(os, "Ns", resi, Nv);
 
     BoseHubbardSiteSet sites(L, nmax);
-    MPO Cd0(sites);
     
     vector<IQMPO> Cds;
     vector<MPO> Cdstmp;
@@ -218,81 +217,48 @@ int main(int argc, char **argv)
     string setupfile = format("%s/setup.%d.%d.dat", resdir, L, nmax);
     ifstream setupis(setupfile, ios::binary);
     if(setupis.good()) {
-//        read(setupis, sites);
         sites.read(setupis);
-//        Cdstmp.resize(L-1, MPO(sites));
-//        Cdstmp.resize(L-1, Cd0);
-        //read(setupis, Cdstmp);
         for(int d = 1; d < L; d++) {
             MPO Cd(sites);
             Cd.read(setupis);
-            //read(setupis, Cd);
             Cdstmp.push_back(Cd);
         }
     } else {
         ofstream setupos(setupfile, ios::binary);
         sites.write(setupos);
-//        write(setupos, sites);
         for(int d = 1; d < L; d++) {
-            MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
+            cout << "d = " << d << endl;
+//            MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
+//            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+            IQMPO Cd = HamBuilder<IQTensor>(sites);
+            Hubbard hub(5);
+            HubbardChain chain1(hub), chain2(hub);
+            MPO mpo1 = chain1;
+            MPO mpo2 = chain2;
+//            BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
+//            IQMPO BHmpo = BH;
+//            BoseHubbardHamiltonian BH2 = BoseHubbardHamiltonian(sites);
+//            IQMPO BHmpo2 = BH2;
+            cout << "d = " << d << " 2" << endl;
+            mpo1.plusEq(mpo2);
+//            BHmpo.plusEq(BHmpo2);
+//            Cd.plusEq(Cd);
+            cout << "d = " << d << " 3" << endl;
             for(int i = 2; i <= L-d; i++) {
-                Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
+//                Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
+                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
             }
             Cd *= 1./(L-d);
-            //write(setupos, Cd);
             Cd.write(setupos);
-            Cdstmp.push_back(Cd);
-            //Cds.push_back(Cd.toIQMPO());
+            //Cdstmp.push_back(Cd);
         }
-//        write(setupos, Cdstmp);
     }
-    /*{
-        MPO mpo1(sites);
-        ostringstream oss;
-        write(oss, mpo1);
-//        mpo1.write(oss);
-        string str = oss.str();
-        MPO mpo2(sites);
-        istringstream iss;
-        iss.str(str);
-        read(iss, mpo2);
-//        mpo2.read(iss);
-        
-//        ostringstream oss;
-//        write(oss, Cdstmp);
-//        string str = oss.str();
-//        vector<MPO> Cdstmp2(L-1, MPO(sites));
-//        istringstream iss;
-//        iss.str(str);
-//        read(iss, Cdstmp2);
-    }*/
     for(int i = 0; i < L-1; i++) {
-        //MPO Cdtmp = Cdstmp[i];
-        Cds.push_back(Cdstmp[i].toIQMPO());
+        IQMPO Cd(sites);
+        Cds.push_back(Cd);
+        //Cds.push_back(Cdstmp[i].toIQMPO());
     }
     
-    /*context_t gscontext(numthreads);
-    vector<context_t> incontexts;
-    vector<socket_t> outsockets, insockets;
-    vector<connection_monitor> monitors;
-    vector<thread> monitorthreads;
-    string monitoraddr = "inproc://monitor.";
-//    vector<int> outports, inports;
-//    int port = 5555;
-    for(int i = 0; i < numthreads; i++) {
-        outsockets.emplace_back(gscontext, ZMQ_PUSH);
-//        outports.push_back(port++);
-        //outsockets.back().connect(("tcp://localhost:" + to_string(outports.back())).c_str());
-
-        incontexts.emplace_back();
-        insockets.emplace_back(incontexts.back(), ZMQ_PULL);
-        monitors.emplace_back(incontexts.back(), insockets.back());
-        monitorthreads.emplace_back([&] () {
-            monitors.back().monitor(insockets.back(), (monitoraddr + to_string(reinterpret_cast<int>(&insockets.back()))).c_str(), ZMQ_EVENT_DISCONNECTED);
-        });
-//        inports.push_back(port++);
-        //insockets.back().bind(("tcp://localhost:" + to_string(inports.back())).c_str());
-    }*/
     
     
 #ifdef MACOSX
@@ -305,35 +271,23 @@ int main(int argc, char **argv)
 #ifdef FST
     string groundstate = "C:/Users/abuenameh/Documents/NetBeansProjects/DMRGGroundState/dist/Release/MinGW_TDM-Windows/dmrggroundstate.exe";
 #endif
-    ProcessPool pool(numthreads, groundstate, /*outsockets, incontexts, insockets,*/ [&] (message_queue& oq, message_queue& iq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort) {
-        cout << "Writing sites" << endl;
+    ProcessPool pool(numthreads, groundstate, [&] (message_queue& oq, message_queue& iq, bool& abort) {
         write(oq, sites);
-        cout << "Writing Cds" << endl << flush;
         write(oq, Cds);
-        cout << "Wrote Cds" << endl << flush;
         write(oq, nsweeps);
-        cout << "Wrote nsweeps" << endl << flush;
         write(oq, minm);
         write(oq, maxm);
         write(oq, niter);
         write(oq, cutoff);
         write(oq, noise);
-        cout << "Wrote sweeps" << endl << flush;
         write(oq, errgoal);
-        cout << "Wrote errgoal" << endl << flush;
         write(oq, quiet);
-        cout << "Wrote quiet" << endl << flush;
-//        cout << "About to wait" << endl << flush;
-//        int wait = 0;
-//        read(iq, wait);
     });
     
     concurrent_queue<Results> resq;
     
-//#ifndef FST
     interruptResq = &resq;
     interruptRes = new Results;
-//#endif
     
     vector<Real> Us(L, 1);
 
@@ -349,26 +303,12 @@ int main(int argc, char **argv)
     for(int ix = 0; ix < nx; ++ix) {
         for(int iN = 0; iN < nN; ++iN) {
             vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](message_queue& oq, message_queue& iq,/*nnxx::socket& os, nnxx::socket& is,*/ bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
-                cout << "Writing parameters " << (int)(&oq) << endl << flush;
-//                for(;;) {}
+            pool.enqueue([&](message_queue& oq, message_queue& iq, bool& abort, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
                 try{
                 write(oq, xs);
-                cout << "Wrote xs " << (int)(&oq) << endl << flush;
                 write(oq, Us);
-                cout << "Wrote Us " << (int)(&oq) << endl << flush;
                 write(oq, mus);
-                cout << "Wrote mus" << endl << flush;
                 write(oq, N);
-                cout << "Wrote N" << endl << flush;
-                //}catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
-
-#ifndef FST
-                read(abortis, abort);
-                if(abort) {
-                    return;
-                }
-#endif
                 
                 Results res;
 
@@ -378,28 +318,20 @@ int main(int argc, char **argv)
                 res.Us = Us;
                 res.mus = mus;
 
-                //try{
-                    cout << "About to read E0" << endl << flush;
                 read(iq, res.E0);
-                cout << "Read E0" << endl << flush;
                 read(iq, res.Ei);
-                cout << "Read Ei" << endl << flush;
                 read(iq, res.n);
-                cout << "Read n" << endl << flush;
                 read(iq, res.n2);
-                cout << "Read n2" << endl << flush;
                 read(iq, res.C);
                 read(iq, res.runtime);
 
                 resq->push(res);
-                }catch(std::exception& e) {cout << "Error: " << e.what() << endl << flush; abort=true; return; }
-//                }
-//                catch(...) {
-//                    cout << "-----Aborting-----" << endl << endl;
-//                    abort = true;
-//                    return;
-//                }
-                abort = false;
+                }
+                catch(std::exception& e) {
+                    cout << "Error: " << e.what() << endl << flush;
+                    abort = true;
+                    return;
+                }
 
             }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
         }
@@ -513,7 +445,7 @@ int main(int argc, char **argv)
     string runtime = seconds_to_string(duration_cast<seconds>(end - start).count());
     printMath(os, "runtime", resi, runtime);
 
-    exit(0);
+//    exit(0);
 
     return 0;
 }
