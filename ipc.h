@@ -12,9 +12,15 @@
 #define BOOST_DATE_TIME_NO_LIB
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-#define NUM_MSG 100
-#define MAX_MSG_SIZE 1024*1024
-//#define MAX_MSG_SIZE 10
+#define NUM_MSG 10
+//#define MAX_MSG_SIZE 10*1024*1024
+#define MAX_MSG_SIZE 100*1024
+
+//#define SETUP_NUM_MSG L+5*nsweeps+4
+#define SETUP_NUM_MSG L
+#define SETUP_MAX_MSG_SIZE 10*1024*1024
+
+#define CDS_MAX_MSG_SIZE 10*1024*1024
 
 #include <core.h>
 #include "BoseHubbardSiteSet.h"
@@ -112,6 +118,7 @@ void write(message_queue& mq, BoseHubbardSiteSet& sites) {
     stringstream ss(std::ios_base::out);
     sites.write(ss);
     int len = ss.str().length();
+    cout << "BH len = " << len << endl;
     mq.send(ss.str().data(), len, 0);
 }
 
@@ -120,7 +127,7 @@ void write(message_queue& mq, MPOt<Tensor>& mpo) {
     stringstream ss(std::ios_base::out);
     mpo.write(ss);
     int len = ss.str().length();
-    cout << "MPO len = " << len << endl;
+    cout << "Write MPO len = " << len << endl;
     mq.send(ss.str().data(), len, 0);
 }
 
@@ -171,6 +178,21 @@ void read(message_queue& mq, MPOt<Tensor>& mpo) {
     mpo.read(ss);
 }
 
+template<class Tensor>
+void readCd(message_queue& mq, MPOt<Tensor>& mpo) {
+    unsigned int priority;
+    message_queue::size_type len;
+    vector<char> buf(SETUP_MAX_MSG_SIZE);
+    mq.receive(buf.data(), SETUP_MAX_MSG_SIZE, len, priority);
+    cout << "Read MPO len = " << len << endl;
+    check_termination(len);
+    string str = "";
+    str.append(buf.data(), len);
+    stringstream ss(std::ios_base::in);
+    ss.str(str);
+    mpo.read(ss);
+}
+
 template<class T>
 void read(message_queue& mq, T& t) {
     unsigned int priority;
@@ -182,12 +204,32 @@ void read(message_queue& mq, T& t) {
 }
 
 template<class T>
+void readCd(message_queue& mq, T& t) {
+    unsigned int priority;
+    message_queue::size_type len;
+    vector<char> buf(SETUP_MAX_MSG_SIZE);
+    mq.receive(buf.data(), SETUP_MAX_MSG_SIZE, len, priority);
+    check_termination(len);
+    t = *reinterpret_cast<T*>(buf.data());
+}
+
+template<class T>
 void read(message_queue& mq, vector<T>& v) {
     int len;
     read(mq, len);
     v.resize(len);
     for(int i = 0; i < len; i++) {
         read(mq, v[i]);
+    }
+}
+
+template<class Tensor>
+void readCds(message_queue& mq, vector<MPOt<Tensor> >& v) {
+    int len;
+    readCd(mq, len);
+    v.resize(len);
+    for(int i = 0; i < len; i++) {
+        readCd(mq, v[i]);
     }
 }
 

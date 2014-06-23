@@ -134,8 +134,6 @@ int main(int argc, char **argv)
 
     time_point<system_clock> start = system_clock::now();
     
-    ProcessPool::queue_idx = start.time_since_epoch().count();
-
     int resi = stoi(argv[1]);
 
     double ximax = stod(argv[2]);
@@ -156,8 +154,10 @@ int main(int argc, char **argv)
 
     int numthreads = stoi(argv[9]);
 
-    int L = 5;
+    int L = 50;
     int nmax = 7;
+    
+    ProcessPool::L = L;
 
     int nsweeps = 40;
     Real errgoal = -1;
@@ -211,6 +211,30 @@ int main(int argc, char **argv)
 
     BoseHubbardSiteSet sites(L, nmax);
     
+//    Hubbard hub(5);
+//    HubbardChain chain(hub);
+//    MPO mpo = chain;
+//    IQMPO iqmpo = mpo.toIQMPO();
+//    IQMPO iqmpo2;
+//    mpo.toIQ(QN(1,0), iqmpo2);
+//    cout << iqmpo << endl;
+//    cout << "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" << endl;
+//    cout << iqmpo2 << endl;
+//    return 0;
+
+        const int k = L+2;
+    std::vector<IQIndex> links(L+1);
+    for(int l = 0; l <= L; ++l) {
+        std::vector<IndexQN> indices;
+        for(int n = 1; n <= nmax; n++) {
+            indices.push_back(IndexQN(Index(nameint("n", n) + nameint("_", l),1), QN(0,n,n%2)));
+        }
+        for(int i = 0; i < k-nmax; i++) {
+            indices.push_back(IndexQN(Index(nameint("n0_", i) + nameint("_", l),1), QN(0,0,0)));
+        }
+        links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
+    }
+
     vector<IQMPO> Cds;
     vector<MPO> Cdstmp;
 
@@ -219,47 +243,94 @@ int main(int argc, char **argv)
     if(setupis.good()) {
         sites.read(setupis);
         for(int d = 1; d < L; d++) {
-            MPO Cd(sites);
+            IQMPO Cd(sites);
             Cd.read(setupis);
-            Cdstmp.push_back(Cd);
+            Cds.push_back(Cd);
+//            Cdstmp.push_back(Cd);
         }
     } else {
         ofstream setupos(setupfile, ios::binary);
         sites.write(setupos);
         for(int d = 1; d < L; d++) {
+//            cout << "d = " << d << endl;
+////            MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
+////            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
+//            IQMPO Cd = HamBuilder<IQTensor>(sites);
+//            Hubbard hub(5);
+//            HubbardChain chain1(hub), chain2(hub);
+//            MPO mpo1 = chain1;
+//            MPO mpo2 = chain2;
+////            BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
+////            IQMPO BHmpo = BH;
+////            BoseHubbardHamiltonian BH2 = BoseHubbardHamiltonian(sites);
+////            IQMPO BHmpo2 = BH2;
+//            cout << "d = " << d << " 2" << endl;
+//            mpo1.plusEq(mpo2);
+////            BHmpo.plusEq(BHmpo2);
+////            Cd.plusEq(Cd);
+//            cout << "d = " << d << " 3" << endl;
+//            for(int i = 2; i <= L-d; i++) {
+////                Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
+//                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
+//            }
+//            Cd *= 1./(L-d);
+//            Cd.write(setupos);
+//            //Cdstmp.push_back(Cd);
+        
             cout << "d = " << d << endl;
-//            MPO Cd = HamBuilder<ITensor>(sites, "Bdag", 1, "B", 1+d);
-//            IQMPO Cd = HamBuilder<IQTensor>(sites, "Bdag", 1, "B", 1+d);
-            IQMPO Cd = HamBuilder<IQTensor>(sites);
-            Hubbard hub(5);
-            HubbardChain chain1(hub), chain2(hub);
-            MPO mpo1 = chain1;
-            MPO mpo2 = chain2;
-//            BoseHubbardHamiltonian BH = BoseHubbardHamiltonian(sites);
-//            IQMPO BHmpo = BH;
-//            BoseHubbardHamiltonian BH2 = BoseHubbardHamiltonian(sites);
-//            IQMPO BHmpo2 = BH2;
-            cout << "d = " << d << " 2" << endl;
-            mpo1.plusEq(mpo2);
-//            BHmpo.plusEq(BHmpo2);
-//            Cd.plusEq(Cd);
-            cout << "d = " << d << " 3" << endl;
-            for(int i = 2; i <= L-d; i++) {
-//                Cd.plusEq(HamBuilder<ITensor>(sites, "Bdag", i, "B", i+d));
-                Cd.plusEq(HamBuilder<IQTensor>(sites, "Bdag", i, "B", i+d));
-            }
-            Cd *= 1./(L-d);
-            Cd.write(setupos);
-            //Cdstmp.push_back(Cd);
+            IQMPO Cd(sites);
+    for(int n = 1; n <= L; ++n) {
+        IQTensor& W = Cd.Anc(n);
+        IQIndex row = dag(links[n-1]), col = links[n];
+
+        W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
+
+        //Identity strings
+        W += sites.op("Id",n) * row(1) * col(1);
+        W += sites.op("Id",n) * row(k) * col(k);
+        for(int i = 2; i <= k-2; i++) {
+        W += sites.op("Id",n) * row(i) * col(i+1);
         }
+
+        W += sites.op("Bdag",n) * row(1) * col(2) * (1./(L-d));
+        W += sites.op("B",n) * row(d+1) * col(k);
     }
-    for(int i = 0; i < L-1; i++) {
-        IQMPO Cd(sites);
-        Cds.push_back(Cd);
-        //Cds.push_back(Cdstmp[i].toIQMPO());
+
+    Cd.Anc(1) *= IQTensor(links.at(0)(1));
+    Cd.Anc(L) *= IQTensor(dag(links.at(L))(k));
+    Cds.push_back(Cd);
+            Cd.write(setupos);
+        }
+        
+
     }
     
+//    system_clock::rep setup_queue_idx = system_clock::now().time_since_epoch().count();
+//    string setup_queue_name = "dmrg." + to_string(setup_queue_idx);
+////    cout << "Setup queue name: " << setup_queue_name << endl;
+//    ProcessPool::setup_queue_name = setup_queue_name;
+//    
+//    message_queue setupq(create_only, setup_queue_name.c_str(), SETUP_NUM_MSG, SETUP_MAX_MSG_SIZE);
+////        write(setupq, sites);
+//        write(setupq, Cds);
+//        write(setupq, nsweeps);
+//        write(setupq, minm);
+//        write(setupq, maxm);
+//        write(setupq, niter);
+//        write(setupq, cutoff);
+//        write(setupq, noise);
+//        write(setupq, errgoal);
+//        write(setupq, quiet);
     
+
+    //    for(int i = 0; i < L-1; i++) {
+//        IQMPO Cd(sites);
+//        Cds.push_back(Cd);
+//        //Cds.push_back(Cdstmp[i].toIQMPO());
+//    }
+    
+    
+    ProcessPool::queue_idx = system_clock::now().time_since_epoch().count();
     
 #ifdef MACOSX
 //    string groundstate = "/Users/Abuenameh/Projects/ITensorDMRG/GroundState/Release/groundstate";
@@ -271,9 +342,9 @@ int main(int argc, char **argv)
 #ifdef FST
     string groundstate = "C:/Users/abuenameh/Documents/NetBeansProjects/DMRGGroundState/dist/Release/MinGW_TDM-Windows/dmrggroundstate.exe";
 #endif
-    ProcessPool pool(numthreads, groundstate, [&] (message_queue& oq, message_queue& iq, bool& abort) {
+    ProcessPool pool(numthreads, groundstate, [&] (message_queue& cq, message_queue& oq, message_queue& iq, bool& abort) {
         write(oq, sites);
-        write(oq, Cds);
+        write(cq, Cds);
         write(oq, nsweeps);
         write(oq, minm);
         write(oq, maxm);
@@ -282,6 +353,8 @@ int main(int argc, char **argv)
         write(oq, noise);
         write(oq, errgoal);
         write(oq, quiet);
+        int wait = 0;
+        read(iq, wait);
     });
     
     concurrent_queue<Results> resq;

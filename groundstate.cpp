@@ -59,14 +59,17 @@ message_queue *oqueue;
 
 void sigabort(int)
 {
+    cout << "--------------Aborting----------------" << endl;
     vector<char> buf;
     oqueue->send(buf.data(), 0, 0);
+    exit(0);
 }
 
 int main(int argc, char **argv)
 {
-    message_queue iq(open_only, argv[1]);
-    message_queue oq(open_only, argv[2]);
+    message_queue sq(open_only, argv[1]);
+    message_queue iq(open_only, argv[2]);
+    message_queue oq(open_only, argv[3]);
     
     oqueue = &oq;
     
@@ -87,7 +90,7 @@ int main(int argc, char **argv)
         n2s.push_back(sites.op("N2", i));
     }
 
-    read(iq, Cds);
+    readCds(sq, Cds);
 
     int nsweeps;
     read(iq, nsweeps);
@@ -116,6 +119,9 @@ int main(int argc, char **argv)
     bool quiet;
     read(iq, quiet);
     
+    int wait = 1;
+    write(oq, wait);
+    
     while(true) {
 
         vector<Real> Js(L), Us(L), mus(L);
@@ -142,7 +148,9 @@ int main(int argc, char **argv)
             BH.U(Us);
             BH.mu(mus);
 
+//            cout << "About to convert to IQ" << endl;
             IQMPO H = BH;
+//            cout << "Converted to IQ" << endl;
 
             for(int eig = 0; eig < 1; eig++) {
 

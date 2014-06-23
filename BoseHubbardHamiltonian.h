@@ -150,8 +150,8 @@ init_()
     H = IQMPO(sites_);
 
     const int Ns = sites_.N();
-    const int k = 4;
 	const int nmax = sites_.nmax();
+    const int k = nmax+1;//4;
 
     std::vector<IQIndex> links(Ns+1);
     for(int l = 0; l <= Ns; ++l) {

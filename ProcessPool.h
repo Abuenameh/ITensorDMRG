@@ -23,19 +23,25 @@ using namespace boost::process;
 using namespace boost::process::initializers;
 
 typedef function<void(message_queue&, message_queue&, bool&)> callback;
+typedef function<void(message_queue&, message_queue&, message_queue&, bool&)> init_callback;
+
 
 class ProcessPool
 {
 public:
-    ProcessPool(size_t, string, callback);
+    ProcessPool(size_t, string, init_callback);
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args)
     -> future<typename result_of<F(message_queue&, message_queue&, bool&, Args...)>::type>;
-    void create_process(string prog, callback init);
+    void create_process(string prog, init_callback init);
     void interrupt();
     ~ProcessPool();
 
     static system_clock::rep queue_idx;
+//    static system_clock::rep setup_queue_idx;
+    static string setup_queue_name;
+    
+    static int L;
     
 private:
     vector<child> children;
@@ -44,8 +50,10 @@ private:
     // the task queue
     queue<callback> tasks;
     
+    vector<unique_ptr<message_queue> > cqueues;
     vector<unique_ptr<message_queue> > iqueues;
     vector<unique_ptr<message_queue> > oqueues;
+    vector<string> cqueue_names;
     vector<string> iqueue_names;
     vector<string> oqueue_names;
 
@@ -61,8 +69,19 @@ private:
 
 system_clock::rep ProcessPool::queue_idx = 0;
 
-void ProcessPool::create_process(string prog, callback init)
+string ProcessPool::setup_queue_name = "";
+
+int ProcessPool::L = 0;
+
+void ProcessPool::create_process(string prog, init_callback init)
 {
+    string cqueue_name = "dmrg." + to_string(queue_idx++);
+    message_queue cq(create_only, cqueue_name.c_str(), L, CDS_MAX_MSG_SIZE);
+//    cqueue_names.push_back(cqueue_name);
+//    unique_ptr<message_queue> cqueue = unique_ptr<message_queue>(new message_queue(create_only, cqueue_name.c_str(), L, CDS_MAX_MSG_SIZE));
+//    message_queue& cq = *cqueue;
+//    cqueues.push_back(move(cqueue));
+
     string oqueue_name = "dmrg." + to_string(queue_idx++);
     oqueue_names.push_back(oqueue_name);
     unique_ptr<message_queue> oqueue = unique_ptr<message_queue>(new message_queue(create_only, oqueue_name.c_str(), NUM_MSG, MAX_MSG_SIZE));
@@ -76,14 +95,16 @@ void ProcessPool::create_process(string prog, callback init)
     iqueues.push_back(move(iqueue));
 
 //#ifdef FST
-    children.push_back(execute(set_args(vector<string> {prog, oqueue_name, iqueue_name}), inherit_env()));
+    children.push_back(execute(set_args(vector<string> {prog, cqueue_name, oqueue_name, iqueue_name}), inherit_env()));
 //#else
 //    children.push_back(execute(set_args(vector<string> {prog}), inherit_env(), bind_stdin(file_descriptor_source(outpipe.source, never_close_handle)), bind_stdout(file_descriptor_sink(inpipe.sink, never_close_handle)), bind_fd(42, file_descriptor_sink(abortpipe.sink, never_close_handle))));
 //#endif
     child& c = children.back();
 
     bool abort = false;
-    init(oq, iq, abort);
+    init(cq, oq, iq, abort);
+    
+    message_queue::remove(cqueue_name.c_str());
 
     workers.emplace_back(
     [this, prog, init, &oq, &iq] {
@@ -113,7 +134,7 @@ void ProcessPool::create_process(string prog, callback init)
 
 
 // the constructor just launches some amount of workers
-inline ProcessPool::ProcessPool(size_t processes, string prog, callback init)
+inline ProcessPool::ProcessPool(size_t processes, string prog, init_callback init)
     :   stop(false)
 {
     for(size_t i = 0; i<processes; ++i) {
@@ -161,6 +182,7 @@ void ProcessPool::interrupt()
             terminate(children[i]);
             wait_for_exit(children[i]);
         } catch(...) {}
+        message_queue::remove(cqueue_names[i].c_str());
         message_queue::remove(oqueue_names[i].c_str());
         message_queue::remove(iqueue_names[i].c_str());
     }
@@ -180,6 +202,7 @@ inline ProcessPool::~ProcessPool()
         try {
             wait_for_exit(children[i]);
         } catch(...) {}
+        message_queue::remove(cqueue_names[i].c_str());
         message_queue::remove(oqueue_names[i].c_str());
         message_queue::remove(iqueue_names[i].c_str());
     }
