@@ -69,9 +69,8 @@ void sigabort(int)
 
 int main(int argc, char **argv)
 {
-    message_queue sq(open_only, argv[1]);
-    message_queue iq(open_only, argv[2]);
-    message_queue oq(open_only, argv[3]);
+    message_queue iq(open_only, argv[1]);
+    message_queue oq(open_only, argv[2]);
     
     oqueue = &oq;
     
@@ -86,7 +85,7 @@ int main(int argc, char **argv)
     const int L = sites.N();
     const int nmax = sites.nmax();
 
-    vector<IQMPO> Cds;//(L-1, IQMPO(sites));
+    vector<IQMPO> Cds;
         for(int d = 1; d < L; d++) {
         
         const int k = d+3;
@@ -102,7 +101,6 @@ int main(int argc, char **argv)
         links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
     }
 
-//            cout << "d = " << d << endl;
             IQMPO Cd(sites);
     for(int n = 1; n <= L; ++n) {
         IQTensor& W = Cd.Anc(n);
@@ -131,8 +129,6 @@ int main(int argc, char **argv)
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
     }
-
-//    readCds(sq, Cds);
 
     int nsweeps;
     read(iq, nsweeps);
@@ -190,9 +186,7 @@ int main(int argc, char **argv)
             BH.U(Us);
             BH.mu(mus);
 
-//            cout << "About to convert to IQ" << endl;
             IQMPO H = BH;
-//            cout << "Converted to IQ" << endl;
 
             for(int eig = 0; eig < 1; eig++) {
 
