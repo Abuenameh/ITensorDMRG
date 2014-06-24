@@ -145,18 +145,14 @@ void write(message_queue& mq, vector<T>& v) {
     }
 }
 
-inline void check_termination(int len) {
-    if (len == 0) {
-        throw runtime_error("Connection terminated");
-    }
-}
+void check_termination(message_queue& mq, int len);
 
 void read(message_queue& mq, BoseHubbardSiteSet& sites) {
     unsigned int priority;
     message_queue::size_type len;
     vector<char> buf(MAX_MSG_SIZE);
     mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
-    check_termination(len);
+    check_termination(mq, len);
     string str = "";
     str.append(buf.data(), len);
     stringstream ss(std::ios_base::in);
@@ -170,7 +166,7 @@ void read(message_queue& mq, MPOt<Tensor>& mpo) {
     message_queue::size_type len;
     vector<char> buf(MAX_MSG_SIZE);
     mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
-    check_termination(len);
+    check_termination(mq, len);
     string str = "";
     str.append(buf.data(), len);
     stringstream ss(std::ios_base::in);
@@ -185,7 +181,7 @@ void readCd(message_queue& mq, MPOt<Tensor>& mpo) {
     vector<char> buf(SETUP_MAX_MSG_SIZE);
     mq.receive(buf.data(), SETUP_MAX_MSG_SIZE, len, priority);
     cout << "Read MPO len = " << len << endl;
-    check_termination(len);
+    check_termination(mq, len);
     string str = "";
     str.append(buf.data(), len);
     stringstream ss(std::ios_base::in);
@@ -199,7 +195,7 @@ void read(message_queue& mq, T& t) {
     message_queue::size_type len;
     vector<char> buf(MAX_MSG_SIZE);
     mq.receive(buf.data(), MAX_MSG_SIZE, len, priority);
-    check_termination(len);
+    check_termination(mq, len);
     t = *reinterpret_cast<T*>(buf.data());
 }
 
@@ -209,7 +205,7 @@ void readCd(message_queue& mq, T& t) {
     message_queue::size_type len;
     vector<char> buf(SETUP_MAX_MSG_SIZE);
     mq.receive(buf.data(), SETUP_MAX_MSG_SIZE, len, priority);
-    check_termination(len);
+    check_termination(mq, len);
     t = *reinterpret_cast<T*>(buf.data());
 }
 
@@ -230,6 +226,24 @@ void readCds(message_queue& mq, vector<MPOt<Tensor> >& v) {
     v.resize(len);
     for(int i = 0; i < len; i++) {
         readCd(mq, v[i]);
+    }
+}
+
+class run_failed {};
+class run_aborted {};
+
+inline void check_termination(message_queue& mq, int len) {
+    if(len == 0) {
+        int aborted = 0;
+        read(mq, aborted);
+        cout << "Aborted: " << aborted << endl;
+        if(aborted) {
+            throw run_aborted();
+        }
+        else {
+            throw run_failed();
+        }
+//        throw runtime_error("Connection terminated");
     }
 }
 

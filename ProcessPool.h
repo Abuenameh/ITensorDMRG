@@ -22,8 +22,8 @@ using namespace boost::iostreams;
 using namespace boost::process;
 using namespace boost::process::initializers;
 
-typedef function<void(message_queue&, message_queue&, bool&)> callback;
-typedef function<void(message_queue&, message_queue&, message_queue&, bool&)> init_callback;
+typedef function<void(message_queue&, message_queue&, bool&, bool&)> callback;
+typedef function<void(message_queue&, message_queue&)> init_callback;
 
 
 class ProcessPool
@@ -32,7 +32,7 @@ public:
     ProcessPool(size_t, string, init_callback);
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args)
-    -> future<typename result_of<F(message_queue&, message_queue&, bool&, Args...)>::type>;
+    -> future<typename result_of<F(message_queue&, message_queue&, bool&, bool&, Args...)>::type>;
     void create_process(string prog, init_callback init);
     void interrupt();
     ~ProcessPool();
@@ -101,8 +101,7 @@ void ProcessPool::create_process(string prog, init_callback init)
 //#endif
     child& c = children.back();
 
-    bool abort = false;
-    init(cq, oq, iq, abort);
+    init(oq, iq);
     
     message_queue::remove(cqueue_name.c_str());
 
@@ -118,14 +117,21 @@ void ProcessPool::create_process(string prog, init_callback init)
             this->tasks.pop();
             lock.unlock();
 
-            bool abort = false;
-            task(oq, iq, abort);
-            if(abort && !this->stop) {
+            bool failed = false;
+            bool aborted = false;
+            task(oq, iq, failed, aborted);
+            if(failed && !this->stop) {
+                cout << "Failed" << endl;
                 lock.lock();
+                if(aborted) {
                 this->create_process(prog, init);
+                }
+                cout << "Pushing task" << endl;
                 this->tasks.push(task);
                 lock.unlock();
+                if(aborted) {
                 break;
+                }
             }
         }
     }
@@ -145,23 +151,24 @@ inline ProcessPool::ProcessPool(size_t processes, string prog, init_callback ini
 // add new work item to the pool
 template<class F, class... Args>
 auto ProcessPool::enqueue(F&& f, Args&&... args)
--> future<typename result_of<F(message_queue&, message_queue&, bool&, Args...)>::type> {
-    typedef typename result_of<F(message_queue&, message_queue&, bool&, Args...)>::type return_type;
+-> future<typename result_of<F(message_queue&, message_queue&, bool&, bool&, Args...)>::type> {
+    typedef typename result_of<F(message_queue&, message_queue&, bool&, bool&, Args...)>::type return_type;
 
     // don't allow enqueueing after stopping the pool
     if(stop)
         throw runtime_error("enqueue on stopped ProcessPool");
 
-    auto task = std::make_shared< std::packaged_task<return_type(message_queue&, message_queue&, bool&)> >(
-        bind(forward<F>(f), placeholders::_1, placeholders::_2, placeholders::_3, forward<Args>(args)...)
+    auto task = std::make_shared< std::packaged_task<return_type(message_queue&, message_queue&, bool&, bool&)> >(
+        bind(forward<F>(f), placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, forward<Args>(args)...)
     );
 
     future<return_type> res = task->get_future();
     {
         unique_lock<mutex> lock(queue_mutex);
-        tasks.push([task,&res](message_queue& oq, message_queue& iq, bool& abort) {
-            (*task)(oq, iq, abort);
-            if(abort) {
+        tasks.push([task,&res](message_queue& oq, message_queue& iq, bool& failed, bool& aborted) {
+            (*task)(oq, iq, failed, aborted);
+            if(failed) {
+                cout << "Reseting task" << endl;
                 task->reset();
             }
         });
@@ -182,7 +189,7 @@ void ProcessPool::interrupt()
             terminate(children[i]);
             wait_for_exit(children[i]);
         } catch(...) {}
-        message_queue::remove(cqueue_names[i].c_str());
+//        message_queue::remove(cqueue_names[i].c_str());
         message_queue::remove(oqueue_names[i].c_str());
         message_queue::remove(iqueue_names[i].c_str());
     }
@@ -202,7 +209,7 @@ inline ProcessPool::~ProcessPool()
         try {
             wait_for_exit(children[i]);
         } catch(...) {}
-        message_queue::remove(cqueue_names[i].c_str());
+//        message_queue::remove(cqueue_names[i].c_str());
         message_queue::remove(oqueue_names[i].c_str());
         message_queue::remove(iqueue_names[i].c_str());
     }

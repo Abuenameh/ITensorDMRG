@@ -62,6 +62,8 @@ void sigabort(int)
     cout << "--------------Aborting----------------" << endl;
     vector<char> buf;
     oqueue->send(buf.data(), 0, 0);
+    int aborted = 1;
+    oqueue->send(&aborted, sizeof(int), 0);
     exit(0);
 }
 
@@ -82,15 +84,55 @@ int main(int argc, char **argv)
     BoseHubbardSiteSet sites;
     read(iq, sites);
     const int L = sites.N();
+    const int nmax = sites.nmax();
+
+    vector<IQMPO> Cds;//(L-1, IQMPO(sites));
+        for(int d = 1; d < L; d++) {
+        
+        const int k = d+3;
+    std::vector<IQIndex> links(L+1);
+    for(int l = 0; l <= L; ++l) {
+        std::vector<IndexQN> indices;
+        for(int n = 1; n <= nmax; n++) {
+            indices.push_back(IndexQN(Index(nameint("n", n) + nameint("_", l),1), QN(0,n,n%2)));
+        }
+        for(int i = 0; i < k-nmax; i++) {
+            indices.push_back(IndexQN(Index(nameint("n0_", i) + nameint("_", l),1), QN(0,0,0)));
+        }
+        links.at(l) = IQIndex(nameint("BoseHubbard site=",l),indices);
+    }
+
+//            cout << "d = " << d << endl;
+            IQMPO Cd(sites);
+    for(int n = 1; n <= L; ++n) {
+        IQTensor& W = Cd.Anc(n);
+        IQIndex row = dag(links[n-1]), col = links[n];
+
+        W = IQTensor(dag(sites.si(n)),sites.siP(n),row,col);
+
+        //Identity strings
+        W += sites.op("Id",n) * row(1) * col(1);
+        W += sites.op("Id",n) * row(k) * col(k);
+        for(int i = 2; i <= k-2; i++) {
+        W += sites.op("Id",n) * row(i) * col(i+1);
+        }
+
+        W += sites.op("Bdag",n) * row(1) * col(2) * (1./(L-d));
+        W += sites.op("B",n) * row(d+1) * col(k);
+    }
+
+    Cd.Anc(1) *= IQTensor(links.at(0)(1));
+    Cd.Anc(L) *= IQTensor(dag(links.at(L))(k));
+    Cds.push_back(Cd);
+        }
 
     vector<IQTensor> ns, n2s;
-    vector<IQMPO> Cds(L-1, IQMPO(sites));
     for(int i = 1; i <= L; i++) {
         ns.push_back(sites.op("N", i));
         n2s.push_back(sites.op("N2", i));
     }
 
-    readCds(sq, Cds);
+//    readCds(sq, Cds);
 
     int nsweeps;
     read(iq, nsweeps);
@@ -123,7 +165,7 @@ int main(int argc, char **argv)
     write(oq, wait);
     
     while(true) {
-
+        try {
         vector<Real> Js(L), Us(L), mus(L);
 
         read(iq, Js);
@@ -215,6 +257,14 @@ int main(int argc, char **argv)
         write(oq, n2);
         write(oq, C);
         write(oq, runtime);
+        }
+        catch(ITError& e) {
+    vector<char> buf;
+    oq.send(buf.data(), 0, 0);
+    int aborted = 0;
+    oq.send(&aborted, sizeof(int), 0);
+            
+        }
     }
 
     return 0;
