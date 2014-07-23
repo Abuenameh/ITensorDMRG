@@ -59,7 +59,7 @@ using namespace itensor;
 #define L 50
 #define nmax 7
 
-typedef array<Real, L> Parameter;
+//typedef array<Real, L> Parameter;
 
 double M = 1000;
 double g13 = 2.5e9;
@@ -70,7 +70,7 @@ double alpha = 1.1e7;
 
 double g = sqrt(M) * g13;
 
-Parameter JW(Parameter W) {
+/*Parameter JW(Parameter W) {
     Parameter v;
     for (int i = 0; i < L; i++) {
         v[i] = W[i] / sqrt(g * g + W[i] * W[i]);
@@ -89,7 +89,7 @@ Parameter UW(Parameter W) {
         U[i] = -(g24 * g24) / Delta * (g * g * W[i] * W[i]) / ((g * g + W[i] * W[i]) * (g * g + W[i] * W[i]));
     }
     return U;
-}
+}*/
 
 vector<Real> JW(vector<Real> W) {
     vector<Real> v(L, 0);
