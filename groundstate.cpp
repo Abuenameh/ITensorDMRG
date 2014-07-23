@@ -20,8 +20,6 @@
 #include "BoseHubbardHamiltonian.h"
 #include "BoseHubbardObserver.h"
 
-#include <zmq.hpp>
-
 using std::ref;
 using std::stoi;
 using std::stod;

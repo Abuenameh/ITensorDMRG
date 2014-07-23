@@ -8,6 +8,8 @@
 
 #include <zmq.hpp>
 
+#include <fftw3.h>
+
 #undef small
 #include <core.h>
 #include <hambuilder.h>
@@ -54,9 +56,74 @@ using namespace zmq;
 
 using namespace itensor;
 
+#define L 50
+#define nmax 7
+
+typedef array<Real, L> Parameter;
+
+double M = 1000;
+double g13 = 2.5e9;
+double g24 = 2.5e9;
+double delta = 1.0e12;
+double Delta = -2.0e10;
+double alpha = 1.1e7;
+
+double g = sqrt(M) * g13;
+
+Parameter JW(Parameter W) {
+    Parameter v;
+    for (int i = 0; i < L; i++) {
+        v[i] = W[i] / sqrt(g * g + W[i] * W[i]);
+    }
+    Parameter J;
+    for (int i = 0; i < L - 1; i++) {
+        J[i] = alpha * v[i] * v[i + 1];
+    }
+    J[L - 1] = alpha * v[L - 1] * v[0];
+    return J;
+}
+
+Parameter UW(Parameter W) {
+    Parameter U;
+    for (int i = 0; i < L; i++) {
+        U[i] = -(g24 * g24) / Delta * (g * g * W[i] * W[i]) / ((g * g + W[i] * W[i]) * (g * g + W[i] * W[i]));
+    }
+    return U;
+}
+
+vector<Real> JW(vector<Real> W) {
+    vector<Real> v(L, 0);
+    for (int i = 0; i < L; i++) {
+        v[i] = W[i] / sqrt(g * g + W[i] * W[i]);
+    }
+    vector<Real> J(L, 0);
+    for (int i = 0; i < L - 1; i++) {
+        J[i] = alpha * v[i] * v[i + 1];
+    }
+    J[L - 1] = alpha * v[L - 1] * v[0];
+    return J;
+}
+
+vector<Real> UW(vector<Real> W) {
+    vector<Real> U(L, 0);
+    for (int i = 0; i < L; i++) {
+        U[i] = -(g24 * g24) / Delta * (g * g * W[i] * W[i]) / ((g * g + W[i] * W[i]) * (g * g + W[i] * W[i]));
+    }
+    return U;
+}
+
+double JW(double W) {
+    return alpha * (W * W) / (g * g + W * W);
+}
+
+double UW(double W) {
+    return -(g24 * g24) / Delta * (g * g * W * W) / ((g * g + W * W) * (g * g + W * W));
+}
+
 struct Results {
     int ix;
     int iN;
+    vector<Real> Ws;
     vector<Real> xs;
     vector<Real> Us;
     vector<Real> mus;
@@ -68,6 +135,12 @@ struct Results {
     vector<Real> C;
     int runtime;
 };
+
+void assign_complex(fftw_complex& fftc, complex<double> c)
+{
+    fftc[0] = c.real();
+    fftc[1] = c.imag();
+}
 
 string seconds_to_string(int s) {
     int m = s / 60;
@@ -137,6 +210,12 @@ int main(int argc, char **argv) {
     const Real xmax = stod(argv[5]);
     const int nx = stoi(argv[6]);
     vector<Real> xv = linspace(xmin, xmax, nx);
+    
+    vector<Real> Jv, Uv;
+    for (int i = 0; i < nx; i++) {
+        Jv.push_back(JW(xv[i]));
+        Uv.push_back(UW(xv[i]));
+    }
 
     const int Nmin = stoi(argv[7]);
     const int Nmax = stoi(argv[8]);
@@ -148,8 +227,10 @@ int main(int argc, char **argv) {
 
     int numthreads = stoi(argv[9]);
 
-    int L = 50;
-    int nmax = 7;
+    //    int L = 50;
+    //    int nmax = 7;
+    int Lvar = L;
+    int nmaxvar = nmax;
 
     int nsweeps = 40;
     Real errgoal = -1;
@@ -160,7 +241,7 @@ int main(int argc, char **argv) {
     sweeps.maxm() = 400; //10,20,100,100,200,200,300,300,400;
     sweeps.cutoff() = 1E-10;
     sweeps.niter() = 4;
-    sweeps.noise() = 1, 1, 1, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 0; //1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
+    sweeps.noise() = 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 0; //1, 1, 1, 1, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 0; //1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,0;//1e-3;//,1e-3,1-3,1e-3,1e-3,1e-4,1e-4,1e-4,1e-5,1e-5,1e-6,1e-7,1e-8,0;//1E-2,1E-3,1E-4,1E-5,1E-6,1E-7,1E-8,0.0;
 
     vector<int> minm(nsweeps);
     vector<int> maxm(nsweeps);
@@ -190,15 +271,17 @@ int main(int argc, char **argv) {
 
     printMath(os, "seed", resi, seed);
     printMath(os, "ximax", resi, ximax);
-    printMath(os, "L", resi, L);
-    printMath(os, "nmax", resi, nmax);
+    printMath(os, "L", resi, Lvar);
+    printMath(os, "nmax", resi, nmaxvar);
     printMath(os, "errgoal", resi, errgoal);
     printMath(os, "nsweep", resi, nsweeps);
     printMath(os, "maxm", resi, maxm);
     printMath(os, "cutoff", resi, cutoff);
     printMath(os, "niter", resi, niter);
     printMath(os, "noise", resi, noise);
-    printMath(os, "ts", resi, xv);
+    printMath(os, "Ws", resi, xv);
+    printMath(os, "Js", resi, Jv);
+    printMath(os, "Us", resi, Uv);
     printMath(os, "Ns", resi, Nv);
 
     BoseHubbardSiteSet sites(L, nmax);
@@ -219,15 +302,15 @@ int main(int argc, char **argv) {
     ProcessPool pool(numthreads, groundstate, [&] (message_queue& oq, message_queue & iq) {
         write(oq, sites);
         write(oq, nsweeps);
-        write(oq, minm);
-        write(oq, maxm);
-        write(oq, niter);
-        write(oq, cutoff);
-        write(oq, noise);
-        write(oq, errgoal);
-        write(oq, quiet);
-        int wait = 0;
-        read(iq, wait);
+                write(oq, minm);
+                write(oq, maxm);
+                write(oq, niter);
+                write(oq, cutoff);
+                write(oq, noise);
+                write(oq, errgoal);
+                write(oq, quiet);
+                int wait = 0;
+                read(iq, wait);
     });
 
     concurrent_queue<Results> resq;
@@ -235,23 +318,58 @@ int main(int argc, char **argv) {
     interruptResq = &resq;
     interruptRes = new Results;
 
-    vector<Real> Us(L, 1);
+//    vector<Real> Us(L, 1);
 
     vector<Real> mus(L, 0);
+//    std::mt19937 gen;
+//    std::uniform_real_distribution<> dist(-ximax, ximax);
+//    auto randmu = bind(dist, gen);
+//    gen.seed(seed);
+//    for (int i = 0; i < L; i++) {
+//        mus[i] = randmu();
+//    }
+
+    int FFTD = 200;
+    int FFTL = (int) ximax * FFTD;
+    fftw_complex* arr = fftw_alloc_complex(FFTL * FFTL);
+    fftw_plan plan = fftw_plan_dft_2d(FFTL, FFTL, arr, arr, FFTW_FORWARD, FFTW_ESTIMATE);
+
     std::mt19937 gen;
-    std::uniform_real_distribution<> dist(-ximax, ximax);
-    auto randmu = bind(dist, gen);
-    gen.seed(seed);
-    for (int i = 0; i < L; i++) {
-        mus[i] = randmu();
-    }
+    std::uniform_real_distribution<> dist(0, 2 * M_PI);
+    auto rand = bind(dist, gen);
 
     for (int ix = 0; ix < nx; ++ix) {
+        gen.seed(seed);
+        double A = (4 / M_PI) * (xv[ix] / FFTD);
+        for (int i = 0; i < FFTL * FFTL; i++) {
+            int x = i % FFTL - FFTL / 2;
+            int y = i / FFTL - FFTL / 2;
+            if (x * x + y * y < 0.25 * FFTD * FFTD) {
+                assign_complex(arr[i], A * exp(complex<double>(0, 1) * rand()));
+            } else {
+                assign_complex(arr[i], 0);
+            }
+        }
+        vector<complex<double> > in(L * L);
+        copy(reinterpret_cast<complex<double>*> (arr), reinterpret_cast<complex<double>*> (arr + L * L), in.data());
+        fftw_execute(plan);
+
+        vector<Real> Ws;
+        for (int i = 0; i < L; i++) {
+            int k = FFTL * FFTL / 2 + FFTL / 4 + i;
+            complex<double> arri(arr[k][0], arr[k][1]);
+            Ws.push_back(real(abs(arri)));
+        }
+        vector<Real> Js = JW(Ws);
+        vector<Real> Us = UW(Ws);
+
         for (int iN = 0; iN < nN; ++iN) {
-            vector<Real> xs(L, xv[ix]);
-            pool.enqueue([&](message_queue& oq, message_queue& iq, bool& failed, bool& aborted, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& xs, vector<Real>& Us, vector<Real>& mus, int N) {
+
+
+//            vector<Real> xs(L, xv[ix]);
+            pool.enqueue([&](message_queue& oq, message_queue& iq, bool& failed, bool& aborted, concurrent_queue<Results>* resq, int ix, int iN, vector<Real>& Ws, vector<Real>& Js, vector<Real>& Us, vector<Real>& mus, int N) {
                 try {
-                    write(oq, xs);
+                    write(oq, Js);
                     write(oq, Us);
                     write(oq, mus);
                     write(oq, N);
@@ -260,7 +378,8 @@ int main(int argc, char **argv) {
 
                     res.ix = ix;
                     res.iN = iN;
-                    res.xs = xs;
+                    res.Ws = Ws;
+                    res.xs = Js;
                     res.Us = Us;
                     res.mus = mus;
 
@@ -272,18 +391,15 @@ int main(int argc, char **argv) {
                     read(iq, res.runtime);
 
                     resq->push(res);
-                }
-                catch (run_failed& e) {
+                }                catch (run_failed& e) {
                     failed = true;
                     aborted = false;
                     return;
-                }
-                catch (run_aborted& e) {
+                }                catch (run_aborted& e) {
                     failed = true;
                     aborted = true;
                     return;
-                }
-                catch (std::exception& e) {
+                }                catch (std::exception& e) {
                     cout << "Error: " << e.what() << endl << flush;
                     failed = true;
                     aborted = false;
@@ -292,7 +408,7 @@ int main(int argc, char **argv) {
                 failed = false;
                 aborted = false;
 
-            }, &resq, ix, iN, xs, Us, mus, Nv[iN]);
+            }, &resq, ix, iN, Ws, Js, Us, mus, Nv[iN]);
         }
     }
 
@@ -333,6 +449,7 @@ int main(int argc, char **argv) {
 
     int count = 0;
 
+    multi_array<vector<Real>, 2> Wres(extents[nx][nN]);
     multi_array<vector<Real>, 2> xres(extents[nx][nN]);
     multi_array<vector<Real>, 2> Ures(extents[nx][nN]);
     multi_array<vector<Real>, 2> mures(extents[nx][nN]);
@@ -346,6 +463,7 @@ int main(int argc, char **argv) {
 
     for (int ix = 0; ix < nx; ++ix) {
         for (int iN = 0; iN < nN; ++iN) {
+            Wres[ix][iN] = vector<Real>(L, NAN);
             xres[ix][iN] = vector<Real>(L, NAN);
             Ures[ix][iN] = vector<Real>(L, NAN);
             mures[ix][iN] = vector<Real>(L, NAN);
@@ -367,6 +485,7 @@ int main(int argc, char **argv) {
         }
         int ix = res.ix;
         int iN = res.iN;
+        Wres[ix][iN] = res.Ws;
         xres[ix][iN] = res.xs;
         Ures[ix][iN] = res.Us;
         mures[ix][iN] = res.mus;
@@ -387,11 +506,11 @@ int main(int argc, char **argv) {
     pool.interrupt();
     try {
         terminate(c);
-    }
-    catch (...) {
+    }    catch (...) {
     }
 
-    printMath(os, "tres", resi, xres);
+    printMath(os, "Wres", resi, Wres);
+    printMath(os, "Jres", resi, xres);
     printMath(os, "Ures", resi, Ures);
     printMath(os, "mures", resi, mures);
     printMath(os, "E0res", resi, E0res);
