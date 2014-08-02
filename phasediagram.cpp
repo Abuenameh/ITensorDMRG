@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
     int Lvar = L;
     int nmaxvar = nmax;
 
-    int nsweeps = 20;
+    int nsweeps = 40;
     Real errgoal = -1;
     bool quiet = true;
 
